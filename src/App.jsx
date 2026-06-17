@@ -105,7 +105,7 @@ function useUnread(userId) {
 }
 
 // ─── PostCard ─────────────────────────────────────────────────────────────────
-function PostCard({ post, currentUser, onShareClick }) {
+function PostCard({ post, currentUser, onShareClick, onUserClick }) {
   const [likeCount, setLikeCount] = useState(post._likeCount || 0)
   const [liked, setLiked] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(false)
@@ -148,9 +148,11 @@ function PostCard({ post, currentUser, onShareClick }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, marginBottom: 14, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px 10px' }}>
-        <Avatar url={post.author?.avatar_url} name={post.author?.name} size={36} />
+        <div onClick={() => onUserClick?.(post.author)} style={{ cursor: onUserClick ? 'pointer' : undefined, flexShrink: 0 }}>
+          <Avatar url={post.author?.avatar_url} name={post.author?.name} size={36} />
+        </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{post.author?.name}</div>
+          <div onClick={() => onUserClick?.(post.author)} style={{ fontWeight: 700, fontSize: 14, cursor: onUserClick ? 'pointer' : undefined, display: 'inline-block' }}>{post.author?.name}</div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{post.author?.username} · {formatRelative(post.created_at)}</div>
         </div>
         {onShareClick && (
@@ -253,7 +255,7 @@ function CreatePost({ user, onCreated, wallOwnerId = null, wallOwnerName = null 
 }
 
 // ─── ProfileWall ──────────────────────────────────────────────────────────────
-function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, onBannerUpdate }) {
+function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, onBannerUpdate, onUserClick }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [bannerUploading, setBannerUploading] = useState(false)
@@ -299,7 +301,7 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
   return (
     <div>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ height: 110, background: localBannerUrl ? undefined : `linear-gradient(135deg, hsl(${hue},45%,22%) 0%, hsl(${hue+100},35%,18%) 100%)`, backgroundImage: localBannerUrl ? `url(${localBannerUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+        <div style={{ height: localBannerUrl ? 160 : 110, background: localBannerUrl ? undefined : `linear-gradient(135deg, hsl(${hue},45%,22%) 0%, hsl(${hue+100},35%,18%) 100%)`, backgroundImage: localBannerUrl ? `url(${localBannerUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
           {isMe && (
             <>
               <input type="file" ref={bannerFileRef} accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
@@ -310,7 +312,7 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
             </>
           )}
         </div>
-        <div style={{ padding: '0 18px 16px' }}>
+        <div style={{ padding: '0 18px 16px', position: 'relative', zIndex: 1 }}>
           <div style={{ marginTop: -20 }}>
             <Avatar url={profileUser?.avatar_url} name={profileUser?.name} size={64} style={{ border: '3px solid #0b0b0b' }} />
           </div>
@@ -337,14 +339,14 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
           ? <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14, border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 14 }}>
               {isMe ? 'Постов пока нет. Поделитесь чем-нибудь!' : 'Постов пока нет.'}
             </div>
-          : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} />)
+          : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} onUserClick={onUserClick} />)
       }
     </div>
   )
 }
 
 // ─── GlobalFeed ───────────────────────────────────────────────────────────────
-function GlobalFeed({ currentUser, onShareClick }) {
+function GlobalFeed({ currentUser, onShareClick, onUserClick }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -370,7 +372,7 @@ function GlobalFeed({ currentUser, onShareClick }) {
           ? <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14, border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 14 }}>
               Постов пока нет. Поделитесь чем-нибудь!
             </div>
-          : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} />)
+          : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} onUserClick={onUserClick} />)
       }
     </div>
   )
@@ -421,7 +423,7 @@ function ShareModal({ post, friends, onClose, onSend }) {
 }
 
 // ─── MessageBubble ─────────────────────────────────────────────────────────────
-function MessageBubble({ msg, isMe, searchQuery, onEdit, onDelete }) {
+function MessageBubble({ msg, isMe, searchQuery, onEdit, onDelete, onUserClick }) {
   const [hover, setHover] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(msg.content || '')
@@ -453,7 +455,7 @@ function MessageBubble({ msg, isMe, searchQuery, onEdit, onDelete }) {
         </div>
       )}
       <div className="msgBubble">
-        {!isMe && msg.sender?.name && <div className="msgSender">{msg.sender.name}</div>}
+        {!isMe && msg.sender?.name && <div className="msgSender" onClick={() => onUserClick?.(msg.sender)} style={{ cursor: onUserClick ? 'pointer' : undefined }}>{msg.sender.name}</div>}
         {msg.type === 'image' && msg.media_url
           ? <img src={msg.media_url} alt="фото" onClick={() => window.open(msg.media_url,'_blank')} style={{ maxWidth: 280, borderRadius: 10, display: 'block', cursor: 'zoom-in' }} />
           : editing
@@ -678,6 +680,14 @@ export default function App() {
     const { error } = await supabase.from('messages').delete().eq('id', msgId)
     if (!error) setMessages(prev => prev.filter(m => m.id !== msgId))
     else notificationService.showNotification('Ошибка', 'Не удалось удалить сообщение', 'error')
+  }
+
+  function openProfile(userData) {
+    if (!userData?.id) return
+    if (userData.id === user?.id) setViewingUser(null)
+    else setViewingUser(userData)
+    setActiveTab('profile')
+    setSidebarOpen(false)
   }
 
   async function startChatWith(targetUser) {
@@ -920,7 +930,7 @@ export default function App() {
                     ? <div className="blank"><div className="blank__title">{msgSearchQuery ? 'Ничего не найдено' : 'Сообщений пока нет'}</div><div className="blank__text">{msgSearchQuery ? 'Попробуйте другой запрос' : 'Начните общение!'}</div></div>
                     : displayMessages.map(msg => (
                       <MessageBubble key={msg.id} msg={msg} isMe={msg.sender_id === user.id}
-                        searchQuery={msgSearchQuery} onEdit={handleEditMessage} onDelete={handleDeleteMessage} />
+                        searchQuery={msgSearchQuery} onEdit={handleEditMessage} onDelete={handleDeleteMessage} onUserClick={openProfile} />
                     ))
                 }
               </div>
@@ -1051,7 +1061,7 @@ export default function App() {
           <section className={`view ${activeTab === 'feed' ? 'is-active' : ''}`}>
             <div className="view-header"><div className="view-header__title">Лента</div></div>
             <div className="view-content" style={{ overflowY: 'auto', padding: 20 }}>
-              <GlobalFeed currentUser={user} onShareClick={setSharePost} />
+              <GlobalFeed currentUser={user} onShareClick={setSharePost} onUserClick={openProfile} />
             </div>
           </section>
 
@@ -1086,6 +1096,7 @@ export default function App() {
                 isFriendOfUser={isFriend(profileUser?.id)}
                 onShareClick={setSharePost}
                 onBannerUpdate={(url) => setUser(prev => ({ ...prev, banner_url: url }))}
+                onUserClick={openProfile}
               />
             </div>
           </section>

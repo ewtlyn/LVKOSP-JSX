@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
 
-// перенос из supabase.js =====
 function isValidUserData(data) {
   if (!data) return false
   if (data.name && String(data.name).includes('C:\\fakepath\\')) return false
@@ -15,7 +14,6 @@ function cleanupCorruptedData() {
       const user = JSON.parse(userStr)
       if (!isValidUserData(user)) {
         localStorage.removeItem('lvkosp_user')
-        localStorage.removeItem('lvkosp_token')
         localStorage.removeItem('lvkosp_user_id')
       }
     }
@@ -32,23 +30,19 @@ async function hashPassword(password) {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-function generateToken() {
-  return 'token_' + Math.random().toString(36).substr(2, 16) + '_' + Date.now().toString(36)
-}
-
 async function uploadAvatar(file, userId) {
   if (!file || !file.type.startsWith('image/')) throw new Error('Please select a valid image file')
   if (file.size > 2 * 1024 * 1024) throw new Error('Image size should be less than 2MB')
-
   const fileName = `avatar_${userId}_${Date.now()}.${file.name.split('.').pop()}`
   const filePath = `${userId}/${fileName}`
-
-  const { error } = await supabase.storage.from('avatars').upload(filePath, file, {
-    cacheControl: '3600',
-    upsert: true,
-  })
+  const uploadTimeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Upload timeout — создайте бакет avatars в Supabase Storage')), 10000)
+  )
+  const { error } = await Promise.race([
+    supabase.storage.from('avatars').upload(filePath, file, { cacheControl: '3600', upsert: true }),
+    uploadTimeout,
+  ])
   if (error) throw error
-
   const { data: pub } = supabase.storage.from('avatars').getPublicUrl(filePath)
   return pub?.publicUrl || ''
 }
@@ -59,136 +53,148 @@ async function deleteOldAvatar(avatarUrl) {
     const urlParts = avatarUrl.split('/')
     const fileName = urlParts[urlParts.length - 1]
     const userId = urlParts[urlParts.length - 2]
-    const filePath = `${userId}/${fileName}`
-    await supabase.storage.from('avatars').remove([filePath]).catch(() => {})
-  } catch {
-  }
+    await supabase.storage.from('avatars').remove([`${userId}/${fileName}`]).catch(() => {})
+  } catch {}
 }
 
-// ===== аутф =====
+function isNetworkError(error) {
+  if (!error) return false
+  const msg = error.message || ''
+  return msg.includes('TypeError') || msg.includes('Failed to fetch') || msg.includes('terminated') || error.code === ''
+}
+
+async function supabaseRetry(fn, retries = 1, delayMs = 1500) {
+  const timeoutResult = { data: null, error: { message: 'timeout', code: 'TIMEOUT' } }
+  const result = await Promise.race([
+    fn(),
+    new Promise(resolve => setTimeout(() => resolve(timeoutResult), 5000)),
+  ])
+  if (result.error) {
+    if (result.error.code === 'TIMEOUT') return result  // не ретраим таймаут
+    if (isNetworkError(result.error) && retries > 0) {
+      await new Promise(r => setTimeout(r, delayMs))
+      return supabaseRetry(fn, retries - 1, delayMs)
+    }
+  }
+  return result
+}
+
+function saveUserLocally(user) {
+  const data = {
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    avatar_url: user.avatar_url || '',
+    bio: user.bio || '',
+    status: 'online',
+  }
+  localStorage.setItem('lvkosp_user_id', user.id)
+  localStorage.setItem('lvkosp_user', JSON.stringify(data))
+  return data
+}
+
 export class AuthService {
   constructor() {
     cleanupCorruptedData()
-    this.typingUsers = new Map() 
   }
 
   async signUp(username, password, name, avatarFile = null, bio = '') {
     try {
-      if (!username || username.length < 3) return { success: false, error: 'Username must be at least 3 characters' }
-      if (!password || password.length < 6) return { success: false, error: 'Password must be at least 6 characters' }
-      if (!name || name.length < 2) return { success: false, error: 'Name must be at least 2 characters' }
+      if (!username || username.length < 3) return { success: false, error: 'Имя пользователя минимум 3 символа' }
+      if (!password || password.length < 6) return { success: false, error: 'Пароль минимум 6 символов' }
+      if (!name || name.length < 2) return { success: false, error: 'Имя минимум 2 символа' }
 
-      const { data: existingUser, error: checkError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', username.trim())
-        .maybeSingle()
+      const { data: existingUser, error: checkError } = await supabaseRetry(() =>
+        supabase.from('profiles').select('id').eq('username', username.trim()).maybeSingle()
+      )
 
-      if (checkError && checkError.code !== 'PGRST116') return { success: false, error: 'Database error' }
-      if (existingUser) return { success: false, error: 'Username already exists' }
+      if (checkError) {
+        console.error('[signUp] check error:', checkError)
+        const msg = checkError.code === 'TIMEOUT' ? 'Сервер не отвечает. Попробуйте ещё раз.' : 'Ошибка подключения. Попробуйте снова.'
+        return { success: false, error: msg }
+      }
+      if (existingUser) return { success: false, error: 'Это имя пользователя уже занято' }
 
       const passwordHash = await hashPassword(password)
       const userId = crypto.randomUUID()
 
       let avatarUrl = ''
       if (avatarFile) {
-        avatarUrl = await uploadAvatar(avatarFile, userId)
+        try { avatarUrl = await uploadAvatar(avatarFile, userId) }
+        catch (e) { console.warn('[signUp] avatar upload failed:', e.message) }
       }
 
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: userId,
-        username: username.trim(),
-        name: name.trim(),
-        password_hash: passwordHash,
-        avatar_url: avatarUrl,
-        bio: bio.trim(),
-        created_at: new Date().toISOString(),
-        last_seen: new Date().toISOString(),
-        status: 'online',
-      })
+      const { error: profileError } = await supabaseRetry(() =>
+        supabase.from('profiles').insert({
+          id: userId,
+          username: username.trim(),
+          name: name.trim(),
+          password_hash: passwordHash,
+          avatar_url: avatarUrl,
+          bio: bio.trim(),
+          created_at: new Date().toISOString(),
+          last_seen: new Date().toISOString(),
+          status: 'online',
+        })
+      )
 
-      if (profileError) return { success: false, error: profileError.message || 'Registration failed' }
+      if (profileError) {
+        console.error('[signUp] insert error:', profileError)
+        const msg = profileError.code === 'TIMEOUT' ? 'Сервер не отвечает. Попробуйте ещё раз.' : (profileError.message || 'Ошибка регистрации')
+        return { success: false, error: msg }
+      }
 
-      //  авто логин после регистрации
-      return await this.signIn(username, password)
+      const userData = saveUserLocally({ id: userId, username: username.trim(), name: name.trim(), avatar_url: avatarUrl, bio: bio.trim() })
+      return { success: true, user: userData }
     } catch (e) {
-      return { success: false, error: e?.message || 'Registration failed' }
+      console.error('[signUp] catch:', e)
+      return { success: false, error: e?.message || 'Ошибка регистрации' }
     }
   }
 
   async signIn(username, password) {
     try {
-      if (!username || !password) return { success: false, error: 'Please fill all fields' }
+      if (!username || !password) return { success: false, error: 'Заполните все поля' }
 
-      const { data: user, error } = await supabase.from('profiles').select('*').eq('username', username.trim()).maybeSingle()
-      if (error) return { success: false, error: 'Database error' }
-      if (!user) return { success: false, error: 'User not found' }
-
-      const passwordHash = await hashPassword(password)
-      if (user.password_hash !== passwordHash) return { success: false, error: 'Invalid password' }
-
-      await supabase
-        .from('profiles')
-        .update({ last_seen: new Date().toISOString(), status: 'online' })
-        .eq('id', user.id)
-
-      await supabase.from('user_sessions').delete().eq('user_id', user.id)
-
-      const token = generateToken()
-      const { error: sessionError } = await supabase.from('user_sessions').insert({
-        user_id: user.id,
-        token,
-        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      })
-      if (sessionError) return { success: false, error: 'Session creation failed' }
-
-      localStorage.setItem('lvkosp_token', token)
-      localStorage.setItem('lvkosp_user_id', user.id)
-      localStorage.setItem(
-        'lvkosp_user',
-        JSON.stringify({
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          avatar_url: user.avatar_url || '',
-          bio: user.bio || '',
-          status: 'online',
-        })
+      const { data: user, error } = await supabaseRetry(() =>
+        supabase.from('profiles').select('*').eq('username', username.trim()).maybeSingle()
       )
 
-      return {
-        success: true,
-        user: {
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          avatar_url: user.avatar_url || '',
-          bio: user.bio || '',
-          status: 'online',
-        },
+      if (error) {
+        console.error('[signIn] error:', error)
+        const msg = error.code === 'TIMEOUT' ? 'Сервер не отвечает. Попробуйте ещё раз.' : 'Ошибка подключения. Попробуйте снова.'
+        return { success: false, error: msg }
       }
+      if (!user) return { success: false, error: 'Пользователь не найден' }
+
+      const passwordHash = await hashPassword(password)
+      if (user.password_hash !== passwordHash) return { success: false, error: 'Неверный пароль' }
+
+      supabase.from('profiles')
+        .update({ last_seen: new Date().toISOString(), status: 'online' })
+        .eq('id', user.id)
+        .then(() => {}).catch(() => {})
+
+      const userData = saveUserLocally(user)
+      return { success: true, user: userData }
     } catch (e) {
-      return { success: false, error: e?.message || 'Login failed' }
+      console.error('[signIn] catch:', e)
+      return { success: false, error: e?.message || 'Ошибка входа' }
     }
   }
 
   async signOut() {
     try {
       const userId = localStorage.getItem('lvkosp_user_id')
-      const token = localStorage.getItem('lvkosp_token')
-
       if (userId) {
-        await supabase.from('profiles').update({ status: 'offline', last_seen: new Date().toISOString() }).eq('id', userId)
+        supabase.from('profiles')
+          .update({ status: 'offline', last_seen: new Date().toISOString() })
+          .eq('id', userId)
+          .then(() => {}).catch(() => {})
       }
-
-      if (userId && token) {
-        await supabase.from('user_sessions').delete().eq('user_id', userId).eq('token', token)
-      }
-
-      localStorage.removeItem('lvkosp_token')
       localStorage.removeItem('lvkosp_user_id')
       localStorage.removeItem('lvkosp_user')
-
+      localStorage.removeItem('lvkosp_token')
       return { success: true }
     } catch (e) {
       return { success: false, error: e?.message || 'Logout failed' }
@@ -199,44 +205,65 @@ export class AuthService {
     try {
       cleanupCorruptedData()
 
-      const token = localStorage.getItem('lvkosp_token')
       const userId = localStorage.getItem('lvkosp_user_id')
-      if (!token || !userId) return { success: false, error: 'Not authenticated' }
+      const cachedStr = localStorage.getItem('lvkosp_user')
 
-      const { data: session, error: sessionError } = await supabase
-        .from('user_sessions')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('token', token)
-        .maybeSingle()
+      if (!userId) return { success: false, error: 'Not authenticated' }
 
-      if (sessionError) return { success: false, error: 'Session check failed' }
-      if (!session) return { success: false, error: 'Session expired' }
-      if (session.expires_at && new Date(session.expires_at).getTime() < Date.now()) return { success: false, error: 'Session expired' }
+      // Если есть кэш — вернуть сразу, а проверку в фоне
+      if (cachedStr) {
+        try {
+          const cached = JSON.parse(cachedStr)
+          if (cached && cached.id === userId) {
+            // фоновая синхронизация — не блокирует загрузку
+            supabase
+              .from('profiles')
+              .select('id, username, name, avatar_url, bio, status, last_seen')
+              .eq('id', userId)
+              .maybeSingle()
+              .then(({ data, error }) => {
+                if (data) saveUserLocally(data)
+                else if (!error) {
+                  // профиль не найден в БД — чистим кэш и уведомляем UI
+                  localStorage.removeItem('lvkosp_user_id')
+                  localStorage.removeItem('lvkosp_user')
+                  window.dispatchEvent(new CustomEvent('auth:invalidated'))
+                }
+              })
+              .catch(() => {})
+            return { success: true, user: cached }
+          }
+        } catch {}
+      }
 
-      const { data: user, error: userError } = await supabase
-        .from('profiles')
-        .select('id, username, name, avatar_url, bio, status, last_seen')
-        .eq('id', userId)
-        .maybeSingle()
-
-      if (userError) return { success: false, error: 'User fetch failed' }
-      if (!user) return { success: false, error: 'User not found' }
-
-      localStorage.setItem(
-        'lvkosp_user',
-        JSON.stringify({
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          avatar_url: user.avatar_url || '',
-          bio: user.bio || '',
-          status: user.status || 'offline',
-        })
+      // Нет кэша — нужен запрос к Supabase (с таймаутом 6 сек)
+      const timeout = new Promise(resolve =>
+        setTimeout(() => resolve({ data: null, error: { message: 'timeout', code: '' } }), 6000)
       )
+      const { data: user, error } = await Promise.race([
+        supabase
+          .from('profiles')
+          .select('id, username, name, avatar_url, bio, status, last_seen')
+          .eq('id', userId)
+          .maybeSingle(),
+        timeout,
+      ])
 
+      if (error) {
+        console.error('[getCurrentUser] error:', error)
+        return { success: false, error: 'Ошибка соединения' }
+      }
+
+      if (!user) {
+        localStorage.removeItem('lvkosp_user_id')
+        localStorage.removeItem('lvkosp_user')
+        return { success: false, error: 'User not found' }
+      }
+
+      saveUserLocally(user)
       return { success: true, user: { ...user, avatar_url: user.avatar_url || '', bio: user.bio || '' } }
     } catch (e) {
+      console.error('[getCurrentUser] catch:', e)
       return { success: false, error: e?.message || 'Auth check failed' }
     }
   }
@@ -249,17 +276,8 @@ export class AuthService {
       }
       const { data, error } = await supabase.from('profiles').update(safe).eq('id', userId).select().single()
       if (error) return { success: false, error: error.message }
-
       const user = JSON.parse(localStorage.getItem('lvkosp_user') || '{}')
-      localStorage.setItem(
-        'lvkosp_user',
-        JSON.stringify({
-          ...user,
-          name: data.name,
-          bio: data.bio || '',
-        })
-      )
-
+      localStorage.setItem('lvkosp_user', JSON.stringify({ ...user, name: data.name, bio: data.bio || '' }))
       return { success: true, user: data }
     } catch (e) {
       return { success: false, error: e?.message || 'Profile update failed' }
@@ -270,17 +288,12 @@ export class AuthService {
     try {
       const { data: current } = await supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle()
       const oldUrl = current?.avatar_url || ''
-
       const newUrl = await uploadAvatar(avatarFile, userId)
-
       const { error } = await supabase.from('profiles').update({ avatar_url: newUrl }).eq('id', userId)
       if (error) return { success: false, error: error.message }
-
       await deleteOldAvatar(oldUrl)
-
       const user = JSON.parse(localStorage.getItem('lvkosp_user') || '{}')
       localStorage.setItem('lvkosp_user', JSON.stringify({ ...user, avatar_url: newUrl }))
-
       return { success: true, avatar_url: newUrl }
     } catch (e) {
       return { success: false, error: e?.message || 'Avatar update failed' }
@@ -292,24 +305,7 @@ export class AuthService {
       await supabase.from('profiles').update({ last_seen: new Date().toISOString(), status: 'online' }).eq('id', userId)
       return { success: true }
     } catch (e) {
-      return { success: false, error: e?.message || 'Online update failed' }
+      return { success: false }
     }
-  }
-
-  setTyping(userId, chatId, isTyping) {
-    if (isTyping) {
-      if (!this.typingUsers.has(chatId)) this.typingUsers.set(chatId, new Set())
-      this.typingUsers.get(chatId).add(userId)
-      setTimeout(() => this.setTyping(userId, chatId, false), 3000)
-    } else {
-      if (!this.typingUsers.has(chatId)) return
-      this.typingUsers.get(chatId).delete(userId)
-      if (this.typingUsers.get(chatId).size === 0) this.typingUsers.delete(chatId)
-    }
-  }
-
-  getTypingUsers(chatId) {
-    if (!this.typingUsers.has(chatId)) return []
-    return Array.from(this.typingUsers.get(chatId))
   }
 }

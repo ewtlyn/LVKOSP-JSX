@@ -106,50 +106,65 @@ body {
 }
 
 
-/* ===== AUTH MODAL STYLES (если раньше были в <style> в index.html) ===== */
+/* ===== AUTH MODAL ===== */
 .modal {
   position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.65);
-  backdrop-filter: blur(8px);
+  background: #0b0b0b;
   z-index: 9999;
   padding: 20px;
+  overflow-y: auto;
 }
 
 .modal-content {
-  width: min(520px, 100%);
-  border-radius: 18px;
-  padding: 18px;
-  background: rgba(18,18,18,0.9);
-  border: 1px solid rgba(255,255,255,0.12);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  width: min(440px, 100%);
+  border-radius: 20px;
+  padding: 32px;
+  background: #0e0e0e;
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 40px 80px rgba(0,0,0,0.6);
   color: #fff;
+  margin: auto;
 }
 
 .modal-tabs {
   display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 22px;
+  border: 1px solid rgba(255,255,255,0.07);
 }
 
 .modal-tab {
   flex: 1;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.85);
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.45);
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 9px;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s;
 }
 
 .modal-tab.active {
-  background: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.1);
   color: #fff;
-  border-color: rgba(255,255,255,0.22);
+}
+
+.auth-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.38);
+  margin-bottom: 7px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
 }
 
 .auth-form {
@@ -161,34 +176,46 @@ body {
 .auth-form textarea {
   width: 100%;
   box-sizing: border-box;
-  margin: 0 0 10px 0;
+  margin: 0 0 14px 0;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
   color: #fff;
   outline: none;
+  font-size: 15px;
+  font-family: inherit;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.auth-form input[type="text"]:focus,
+.auth-form input[type="password"]:focus,
+.auth-form textarea:focus {
+  border-color: rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.07);
 }
 
 .auth-form input::placeholder,
 .auth-form textarea::placeholder {
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.28);
 }
 
 .auth-form button[type="submit"] {
   width: 100%;
-  border: 0;
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 13px 14px;
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 700;
+  font-size: 15px;
   color: #fff;
-  background: rgba(255,255,255,0.18);
-  transition: transform 0.08s ease, background 0.2s ease;
+  background: rgba(255,255,255,0.1);
+  margin-top: 4px;
+  transition: background 0.2s;
 }
 
 .auth-form button[type="submit"]:hover {
-  background: rgba(255,255,255,0.24);
+  background: rgba(255,255,255,0.16);
 }
 
 .auth-form button[type="submit"]:active {
@@ -196,7 +223,7 @@ body {
 }
 
 .auth-form button[disabled] {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -1346,4 +1373,142 @@ body {
 .chatHeader__avatar:not([style*="--img"]),
 .profileAvatar:not([style*="--img"]) {
   background: rgba(35, 34, 34, 0.5) !important;
+}
+
+/* ============================================================
+   ДОПОЛНЕНИЯ И ПАТЧИ
+   ============================================================ */
+
+/* Убираем белую полоску — html и #root без отступов и рамок */
+html {
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: #0b0b0b;
+}
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: #0b0b0b;
+}
+
+/* chatInput — поле ввода сообщения (класс отсутствовал) */
+.chatInput {
+  flex: 1;
+  background: rgba(14, 14, 14, 0.8);
+  border: 1px solid rgba(35, 34, 34, 0.8);
+  border-radius: 24px;
+  padding: 12px 20px;
+  color: white;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s;
+  line-height: 1.5;
+}
+.chatInput:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(14, 14, 14, 1);
+}
+.chatInput::placeholder { color: rgba(255, 255, 255, 0.3); }
+.chatInput:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* sendBtn — disabled состояние */
+.sendBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+.sendBtn:hover:not(:disabled) { background: rgba(55, 54, 54, 1); transform: scale(1.05); }
+
+/* online/offline статус-точки — позиционируются поверх аватара */
+.online-status {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #22c55e;
+  border: 2px solid #0e0e0e;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  pointer-events: none;
+}
+.offline-status {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #6b7280;
+  border: 2px solid #0e0e0e;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+/* unread badge в dmItem */
+.notification-badge {
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 10px;
+  padding: 1px 6px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1.6;
+  margin-left: auto;
+}
+
+/* message-time — flex для галочек и "изм." */
+.message-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 4px;
+  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+/* typing-indicator внутри chatHeader — без лишнего фона */
+.chatHeader__status .typing-indicator {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+/* mobile-menu-btn — скрыт на десктопе */
+.mobile-menu-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: white;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+/* sidebar-overlay — скрыт по умолчанию */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 998;
+}
+
+/* view-content для профиля и друзей — скроллируется */
+.view-content {
+  flex: 1;
+  overflow-y: auto;
+  background: #0b0b0b;
+  display: flex;
+  flex-direction: column;
+}
+
+/* mobile */
+@media (max-width: 768px) {
+  .mobile-menu-btn { display: flex; position: fixed; top: 10px; left: 10px; z-index: 1000; background: rgba(11,11,11,0.85); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.1); }
+  .sidebar-overlay { display: block; }
 }

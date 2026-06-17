@@ -14,8 +14,8 @@ export class PostsService {
   async getPostsByUser(userId) {
     const { data, error } = await supabase
       .from('posts')
-      .select(`id, author_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`)
-      .eq('author_id', userId)
+      .select(`id, author_id, wall_owner_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`)
+      .or(`author_id.eq.${userId},wall_owner_id.eq.${userId}`)
       .order('created_at', { ascending: false })
 
     if (error) return []
@@ -42,13 +42,16 @@ export class PostsService {
     return data.publicUrl
   }
 
-  async createPost(authorId, content, file = null) {
+  async createPost(authorId, content, file = null, wallOwnerId = null) {
     let mediaUrl = null
     if (file) mediaUrl = await this.uploadPostImage(file, authorId)
 
+    const row = { author_id: authorId, content: content?.trim?.() || '', media_url: mediaUrl }
+    if (wallOwnerId && wallOwnerId !== authorId) row.wall_owner_id = wallOwnerId
+
     const { data, error } = await supabase
       .from('posts')
-      .insert({ author_id: authorId, content: content?.trim?.() || '', media_url: mediaUrl })
+      .insert(row)
       .select()
       .single()
 

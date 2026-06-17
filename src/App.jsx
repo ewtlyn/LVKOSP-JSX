@@ -199,7 +199,7 @@ function PostCard({ post, currentUser, onShareClick }) {
 }
 
 // ─── CreatePost ───────────────────────────────────────────────────────────────
-function CreatePost({ user, onCreated }) {
+function CreatePost({ user, onCreated, wallOwnerId = null, wallOwnerName = null }) {
   const [text, setText] = useState('')
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -216,7 +216,7 @@ function CreatePost({ user, onCreated }) {
     e.preventDefault()
     if (!text.trim() && !file) return
     setLoading(true)
-    const res = await postsService.createPost(user.id, text, file)
+    const res = await postsService.createPost(user.id, text, file, wallOwnerId)
     setLoading(false)
     if (res.success) { setText(''); setFile(null); setPreview(null); onCreated?.() }
     else notificationService.showNotification('Ошибка', res.error, 'error')
@@ -224,10 +224,11 @@ function CreatePost({ user, onCreated }) {
 
   return (
     <form onSubmit={submit} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+      {wallOwnerId && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>Написать на стене {wallOwnerName || ''}</div>}
       <div style={{ display: 'flex', gap: 10 }}>
         <Avatar url={user.avatar_url} name={user.name} size={36} />
         <div style={{ flex: 1 }}>
-          <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Что у вас нового?" rows={2}
+          <textarea value={text} onChange={e => setText(e.target.value)} placeholder={wallOwnerId ? `Написать ${wallOwnerName || ''}...` : 'Что у вас нового?'} rows={2}
             style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px 14px', color: 'white', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }} />
           {preview && (
             <div style={{ position: 'relative', marginTop: 8, display: 'inline-block' }}>
@@ -252,42 +253,63 @@ function CreatePost({ user, onCreated }) {
 }
 
 // ─── ProfileWall ──────────────────────────────────────────────────────────────
-function ProfileWall({ profileUser, currentUser, onShareClick }) {
-  const [myPosts, setMyPosts] = useState([])
-  const [feedPosts, setFeedPosts] = useState([])
+function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, onBannerUpdate }) {
+  const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [bannerUploading, setBannerUploading] = useState(false)
+  const [localBannerUrl, setLocalBannerUrl] = useState(profileUser?.banner_url || '')
+  const bannerFileRef = useRef(null)
   const isMe = Boolean(currentUser?.id) && currentUser.id === profileUser?.id
+  const canPost = isMe || isFriendOfUser
+
+  useEffect(() => { setLocalBannerUrl(profileUser?.banner_url || '') }, [profileUser?.banner_url])
 
   const loadPosts = useCallback(async () => {
     if (!profileUser?.id) return
     setLoading(true)
-    if (isMe) {
-      const all = await postsService.getAllPosts()
-      const enriched = await Promise.all(all.map(async p => {
-        const count = await postsService.getLikeCount(p.id)
-        return { ...p, _likeCount: count }
-      }))
-      setFeedPosts(enriched)
-    } else {
-      const data = await postsService.getPostsByUser(profileUser.id)
-      const enriched = await Promise.all(data.map(async p => {
-        const count = await postsService.getLikeCount(p.id)
-        return { ...p, _likeCount: count }
-      }))
-      setMyPosts(enriched)
-    }
+    const data = await postsService.getPostsByUser(profileUser.id)
+    const enriched = await Promise.all(data.map(async p => {
+      const count = await postsService.getLikeCount(p.id)
+      return { ...p, _likeCount: count }
+    }))
+    setPosts(enriched)
     setLoading(false)
-  }, [profileUser?.id, isMe])
+  }, [profileUser?.id])
 
   useEffect(() => { loadPosts() }, [loadPosts])
 
+  async function handleBannerUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setBannerUploading(true)
+    const res = await authService.updateBanner(currentUser.id, file)
+    setBannerUploading(false)
+    if (!res.success) {
+      notificationService.showNotification('Ошибка', res.error, 'error')
+    } else {
+      setLocalBannerUrl(res.banner_url)
+      onBannerUpdate?.(res.banner_url)
+      notificationService.showNotification('Готово!', 'Фон профиля обновлён', 'success')
+    }
+  }
+
   const hue = (profileUser?.name || '').charCodeAt(0) * 13 % 360
-  const posts = isMe ? feedPosts : myPosts
 
   return (
     <div>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ height: 90, background: `linear-gradient(135deg, hsl(${hue},45%,22%) 0%, hsl(${hue+100},35%,18%) 100%)` }} />
+        <div style={{ height: 110, background: localBannerUrl ? undefined : `linear-gradient(135deg, hsl(${hue},45%,22%) 0%, hsl(${hue+100},35%,18%) 100%)`, backgroundImage: localBannerUrl ? `url(${localBannerUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+          {isMe && (
+            <>
+              <input type="file" ref={bannerFileRef} accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
+              <button type="button" onClick={() => bannerFileRef.current?.click()} disabled={bannerUploading}
+                style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(4px)' }}>
+                {bannerUploading ? '...' : 'Сменить фон'}
+              </button>
+            </>
+          )}
+        </div>
         <div style={{ padding: '0 18px 16px' }}>
           <div style={{ marginTop: -20 }}>
             <Avatar url={profileUser?.avatar_url} name={profileUser?.name} size={64} style={{ border: '3px solid #0b0b0b' }} />
@@ -300,12 +322,13 @@ function ProfileWall({ profileUser, currentUser, onShareClick }) {
         </div>
       </div>
 
-      {isMe && currentUser?.id && <CreatePost user={currentUser} onCreated={loadPosts} />}
-
-      {isMe && (
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 10, marginTop: 4 }}>
-          Лента
-        </div>
+      {canPost && currentUser?.id && (
+        <CreatePost
+          user={currentUser}
+          onCreated={loadPosts}
+          wallOwnerId={isMe ? null : profileUser?.id}
+          wallOwnerName={isMe ? null : profileUser?.name}
+        />
       )}
 
       {loading
@@ -313,6 +336,39 @@ function ProfileWall({ profileUser, currentUser, onShareClick }) {
         : posts.length === 0
           ? <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14, border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 14 }}>
               {isMe ? 'Постов пока нет. Поделитесь чем-нибудь!' : 'Постов пока нет.'}
+            </div>
+          : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} />)
+      }
+    </div>
+  )
+}
+
+// ─── GlobalFeed ───────────────────────────────────────────────────────────────
+function GlobalFeed({ currentUser, onShareClick }) {
+  const [posts, setPosts] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const loadPosts = useCallback(async () => {
+    setLoading(true)
+    const all = await postsService.getAllPosts()
+    const enriched = await Promise.all(all.map(async p => {
+      const count = await postsService.getLikeCount(p.id)
+      return { ...p, _likeCount: count }
+    }))
+    setPosts(enriched)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { loadPosts() }, [loadPosts])
+
+  return (
+    <div>
+      {currentUser?.id && <CreatePost user={currentUser} onCreated={loadPosts} />}
+      {loading
+        ? <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Загрузка...</div>
+        : posts.length === 0
+          ? <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14, border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 14 }}>
+              Постов пока нет. Поделитесь чем-нибудь!
             </div>
           : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} />)
       }
@@ -518,7 +574,25 @@ export default function App() {
       setChats(ch); setFriends(fr); setPendingRequests(reqs)
     })()
     const t = setInterval(() => authService.updateOnlineStatus(user.id), 60000)
-    return () => clearInterval(t)
+    const poll = setInterval(async () => {
+      const [newFriends, newReqs] = await Promise.all([
+        friendsService.getFriends(user.id),
+        friendsService.getPendingRequests(user.id),
+      ])
+      setFriends(prev => {
+        if (prev.length > 0 && newFriends.length > prev.length) {
+          notificationService.showNotification('Ура!', 'У вас новый друг!', 'success')
+        }
+        return newFriends
+      })
+      setPendingRequests(prev => {
+        if (newReqs.length > prev.length) {
+          notificationService.showNotification('Заявки в друзья', 'Новая заявка в друзья!', 'success')
+        }
+        return newReqs
+      })
+    }, 30000)
+    return () => { clearInterval(t); clearInterval(poll) }
   }, [user?.id])
 
   // загрузка сообщений при смене чата
@@ -692,7 +766,10 @@ export default function App() {
   if (!authChecked) return (
     <div style={{ background: '#0b0b0b', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)' }}>
       <div id="notificationContainer" />
-      <div style={{ textAlign: 'center' }}><div style={{ fontSize: 36, marginBottom: 8 }}>💬</div><div>Загрузка...</div></div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: 900, fontSize: 26, color: 'white', letterSpacing: -1 }}>L</div>
+        <div>Загрузка...</div>
+      </div>
     </div>
   )
 
@@ -729,6 +806,11 @@ export default function App() {
             <button className={`tab ${activeTab === 'friends' ? 'is-active' : ''}`} type="button" onClick={() => setActiveTab('friends')}>
               <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg></span>
               <span className="tab__label">Друзья</span>
+              {pendingRequests.length > 0 && <span className="notification-badge">{pendingRequests.length}</span>}
+            </button>
+            <button className={`tab ${activeTab === 'feed' ? 'is-active' : ''}`} type="button" onClick={() => { setActiveTab('feed'); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="10.5" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="17" width="11" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg></span>
+              <span className="tab__label">Лента</span>
             </button>
             <button className={`tab ${activeTab === 'profile' ? 'is-active' : ''}`} type="button" onClick={() => { setActiveTab('profile'); setViewingUser(null) }}>
               <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /></svg></span>
@@ -965,6 +1047,14 @@ export default function App() {
             </div>
           </section>
 
+          {/* ── ЛЕНТА ── */}
+          <section className={`view ${activeTab === 'feed' ? 'is-active' : ''}`}>
+            <div className="view-header"><div className="view-header__title">Лента</div></div>
+            <div className="view-content" style={{ overflowY: 'auto', padding: 20 }}>
+              <GlobalFeed currentUser={user} onShareClick={setSharePost} />
+            </div>
+          </section>
+
           {/* ── ПРОФИЛЬ / СТЕНА ── */}
           <section className={`view ${activeTab === 'profile' ? 'is-active' : ''}`}>
             <div className="view-header">
@@ -990,7 +1080,13 @@ export default function App() {
               </div>
             )}
             <div className="view-content" style={{ overflowY: 'auto', padding: 20 }}>
-              <ProfileWall profileUser={profileUser} currentUser={user} onShareClick={setSharePost} />
+              <ProfileWall
+                profileUser={profileUser}
+                currentUser={user}
+                isFriendOfUser={isFriend(profileUser?.id)}
+                onShareClick={setSharePost}
+                onBannerUpdate={(url) => setUser(prev => ({ ...prev, banner_url: url }))}
+              />
             </div>
           </section>
 
@@ -1001,7 +1097,7 @@ export default function App() {
       <div className="modal" style={{ display: authModalOpen ? 'flex' : 'none' }}>
         <div className="modal-content">
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 26 }}>💬</div>
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: 900, fontSize: 24, color: 'white', letterSpacing: -1 }}>L</div>
             <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: -0.3, color: 'white' }}>LVKOSP Messenger</div>
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginTop: 5 }}>
               {authTab === 'login' ? 'Войдите в свой аккаунт' : 'Создайте новый аккаунт'}

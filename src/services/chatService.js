@@ -51,7 +51,10 @@ export class ChatService {
     if (file.size > 5 * 1024 * 1024) throw new Error('Max 5MB')
     const ext = file.name.split('.').pop()
     const path = `${chatId}/${userId}_${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('chat-media').upload(path, file, { upsert: true })
+    const { error } = await Promise.race([
+      supabase.storage.from('chat-media').upload(path, file, { upsert: true }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Бакет chat-media не создан в Supabase Storage')), 10000)),
+    ])
     if (error) throw error
     const { data } = supabase.storage.from('chat-media').getPublicUrl(path)
     return data.publicUrl

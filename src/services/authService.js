@@ -67,7 +67,7 @@ async function supabaseRetry(fn, retries = 1, delayMs = 1500) {
   const timeoutResult = { data: null, error: { message: 'timeout', code: 'TIMEOUT' } }
   const result = await Promise.race([
     fn(),
-    new Promise(resolve => setTimeout(() => resolve(timeoutResult), 5000)),
+    new Promise(resolve => setTimeout(() => resolve(timeoutResult), 12000)),
   ])
   if (result.error) {
     if (result.error.code === 'TIMEOUT') return result  // не ретраим таймаут
@@ -85,6 +85,7 @@ function saveUserLocally(user) {
     username: user.username,
     name: user.name,
     avatar_url: user.avatar_url || '',
+    banner_url: user.banner_url || '',
     bio: user.bio || '',
     status: 'online',
   }
@@ -218,7 +219,7 @@ export class AuthService {
             // фоновая синхронизация — не блокирует загрузку
             supabase
               .from('profiles')
-              .select('id, username, name, avatar_url, bio, status, last_seen')
+              .select('id, username, name, avatar_url, banner_url, bio, status, last_seen')
               .eq('id', userId)
               .maybeSingle()
               .then(({ data, error }) => {
@@ -243,7 +244,7 @@ export class AuthService {
       const { data: user, error } = await Promise.race([
         supabase
           .from('profiles')
-          .select('id, username, name, avatar_url, bio, status, last_seen')
+          .select('id, username, name, avatar_url, banner_url, bio, status, last_seen')
           .eq('id', userId)
           .maybeSingle(),
         timeout,
@@ -297,6 +298,32 @@ export class AuthService {
       return { success: true, avatar_url: newUrl }
     } catch (e) {
       return { success: false, error: e?.message || 'Avatar update failed' }
+    }
+  }
+
+  async updateBanner(userId, bannerFile) {
+    try {
+      if (!bannerFile || !bannerFile.type.startsWith('image/')) return { success: false, error: 'Выберите изображение' }
+      if (bannerFile.size > 5 * 1024 * 1024) return { success: false, error: 'Максимум 5 МБ' }
+      const ext = bannerFile.name.split('.').pop()
+      const filePath = `${userId}/banner_${Date.now()}.${ext}`
+      const uploadTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Upload timeout')), 10000)
+      )
+      const { error: uploadError } = await Promise.race([
+        supabase.storage.from('avatars').upload(filePath, bannerFile, { cacheControl: '3600', upsert: true }),
+        uploadTimeout,
+      ])
+      if (uploadError) throw uploadError
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(filePath)
+      const bannerUrl = pub?.publicUrl || ''
+      const { error: updateError } = await supabase.from('profiles').update({ banner_url: bannerUrl }).eq('id', userId)
+      if (updateError) return { success: false, error: updateError.message }
+      const cached = JSON.parse(localStorage.getItem('lvkosp_user') || '{}')
+      localStorage.setItem('lvkosp_user', JSON.stringify({ ...cached, banner_url: bannerUrl }))
+      return { success: true, banner_url: bannerUrl }
+    } catch (e) {
+      return { success: false, error: e?.message || 'Banner update failed' }
     }
   }
 

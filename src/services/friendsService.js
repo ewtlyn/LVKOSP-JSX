@@ -22,7 +22,7 @@ export class FriendsService {
     try {
       const { data, error } = await supabase
         .from('friendships')
-        .select(`friend:profiles!friendships_friend_id_fkey(id, username, name, avatar_url, bio, status, last_seen)`)
+        .select(`friend:profiles!friendships_friend_id_fkey(id, username, name, avatar_url, banner_url, bio, status, last_seen)`)
         .eq('user_id', userId)
         .eq('status', 'accepted')
       if (error) return []

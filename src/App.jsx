@@ -860,7 +860,7 @@ function CreatePost({
                 </div>
               ))}
               {previews.length < 4 && (
-                <button type="button" onClick={() => fileRef.current?.click()} style={{ width: 100, height: 100, border: '1.5px dashed rgba(255,255,255,0.2)', borderRadius: 10, background: 'transparent', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 24 }}>+</button>
+                <label htmlFor="postFileInput" style={{ width: 100, height: 100, border: '1.5px dashed rgba(255,255,255,0.2)', borderRadius: 10, background: 'transparent', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</label>
               )}
             </div>
           )}
@@ -872,9 +872,8 @@ function CreatePost({
               marginTop: 8,
             }}
           >
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
+            <label
+              htmlFor="postFileInput"
               style={{
                 background: "transparent",
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -889,27 +888,14 @@ function CreatePost({
               }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <rect
-                  x="3"
-                  y="3"
-                  width="18"
-                  height="18"
-                  rx="2"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                />
+                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.6" />
                 <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
-                <polyline
-                  points="21 15 16 10 5 21"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinejoin="round"
-                />
+                <polyline points="21 15 16 10 5 21" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
               </svg>
               Фото
-            </button>
+            </label>
             <input
-              ref={fileRef}
+              id="postFileInput"
               type="file"
               accept="image/*"
               multiple
@@ -974,8 +960,8 @@ function ProfileWall({
   const [followModalLoading, setFollowModalLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [mutualFriends, setMutualFriends] = useState([]);
-  const bannerFileRef = useRef(null);
-  const avatarFileRef = useRef(null);
+  const bannerFileRef = useRef(null); // kept for compatibility
+  const avatarFileRef = useRef(null); // kept for compatibility
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [localAvatarUrl, setLocalAvatarUrl] = useState(
     profileUser?.avatar_url || "",
@@ -1130,15 +1116,13 @@ function ProfileWall({
             <>
               <input
                 type="file"
-                ref={bannerFileRef}
+                id="bannerFileInput"
                 accept="image/*"
                 style={{ display: "none" }}
                 onChange={handleBannerUpload}
               />
-              <button
-                type="button"
-                onClick={() => bannerFileRef.current?.click()}
-                disabled={bannerUploading}
+              <label
+                htmlFor="bannerFileInput"
                 style={{
                   position: "absolute",
                   top: 8,
@@ -1148,13 +1132,13 @@ function ProfileWall({
                   color: "white",
                   borderRadius: 8,
                   padding: "4px 10px",
-                  cursor: "pointer",
+                  cursor: bannerUploading ? "default" : "pointer",
                   fontSize: 12,
                   fontWeight: 600,
                 }}
               >
                 {bannerUploading ? "..." : "Сменить фон"}
-              </button>
+              </label>
             </>
           )}
         </div>
@@ -1172,16 +1156,14 @@ function ProfileWall({
               {isMe && (
                 <input
                   type="file"
-                  ref={avatarFileRef}
+                  id="avatarFileInput"
                   accept="image/*"
                   style={{ display: "none" }}
                   onChange={handleAvatarUpload}
                 />
               )}
-              <div
-                onClick={
-                  isMe ? () => avatarFileRef.current?.click() : undefined
-                }
+              <label
+                htmlFor={isMe ? "avatarFileInput" : undefined}
                 style={{
                   cursor: isMe ? "pointer" : undefined,
                   position: "relative",
@@ -1214,7 +1196,7 @@ function ProfileWall({
                     {avatarUploading ? "…" : "✎"}
                   </div>
                 )}
-              </div>
+              </label>
             </div>
             {!isMe && currentUser?.id && following !== null && (
               <button
@@ -1736,7 +1718,7 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
   return (
     <>
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '4px 0 12px', scrollbarWidth: 'none' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }} onClick={() => fileRef.current?.click()}>
+        <label htmlFor="storyFileInput" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', position: 'relative' }}>
             {uploading ? <div style={{ width: 20, height: 20, border: '2px solid #a78bfa', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> : (
               <>
@@ -1746,8 +1728,8 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
             )}
           </div>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Мой сторис</span>
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
+        </label>
+        <input id="storyFileInput" type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
         {grouped.map(({ user, items }) => {
           const hasMe = user.id === currentUser?.id
           return (
@@ -3181,27 +3163,16 @@ export default function App() {
           </nav>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px 4px' }}>
-            <div className="sectionTitle" style={{ margin: 0 }}>Сообщения</div>
-            <button onClick={() => setShowArchived(v => !v)}
-              style={{ background: 'none', border: 'none', fontSize: 11, color: showArchived ? '#a78bfa' : 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: '2px 6px', fontWeight: 600 }}>
-              {showArchived ? '← Назад' : 'Архив'}
-            </button>
+            <div className="sectionTitle" style={{ margin: 0 }}>Частые</div>
           </div>
 
           <div className="dmList">
-            {filteredChats.length === 0 ? (
-              <div
-                style={{
-                  padding: 20,
-                  textAlign: "center",
-                  color: "rgba(255,255,255,0.35)",
-                  fontSize: 13,
-                }}
-              >
+            {chats.filter(c => !c.archived).slice(0, 5).length === 0 ? (
+              <div style={{ padding: 20, textAlign: "center", color: "rgba(255,255,255,0.35)", fontSize: 13 }}>
                 Чатов пока нет
               </div>
             ) : (
-              filteredChats.map((chat) => {
+              chats.filter(c => !c.archived).slice(0, 5).map((chat) => {
                 const unread = unreadCounts[chat.id] || 0;
                 return (
                   <div
@@ -3215,37 +3186,16 @@ export default function App() {
                   >
                     <div style={{ position: "relative" }}>
                       <Avatar url={chat.avatarUrl} name={chat.name} size={44} />
-                      <div
-                        className={
-                          chat.status === "online"
-                            ? "online-status"
-                            : "offline-status"
-                        }
-                      />
+                      <div className={chat.status === "online" ? "online-status" : "offline-status"} />
                     </div>
                     <div className="dmMeta">
                       <div className="dmName">{safeText(chat.name)}</div>
-                      <div className="dmSnippet">
-                        {safeText(chat.lastMessage || "Нет сообщений")}
-                      </div>
+                      <div className="dmSnippet">{safeText(chat.lastMessage || "Нет сообщений")}</div>
                     </div>
                     <div className="dmRight">
-                      <div className="dmTime">
-                        {formatTime(chat.lastMessageTime)}
-                      </div>
+                      <div className="dmTime">{formatTime(chat.lastMessageTime)}</div>
                       {unread > 0 && (
-                        <div
-                          style={{
-                            background: "#ef4444",
-                            color: "white",
-                            borderRadius: 10,
-                            fontSize: 10,
-                            fontWeight: 800,
-                            padding: "1px 5px",
-                            minWidth: 16,
-                            textAlign: "center",
-                          }}
-                        >
+                        <div style={{ background: "#ef4444", color: "white", borderRadius: 10, fontSize: 10, fontWeight: 800, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
                           {unread > 99 ? "99+" : unread}
                         </div>
                       )}
@@ -3301,6 +3251,12 @@ export default function App() {
               }}
             >
               <header className="chatHeader">
+                {activeChat && (
+                  <button onClick={() => setActiveChatId(null)}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '0 8px 0 0', fontSize: 20, flexShrink: 0 }}>
+                    ←
+                  </button>
+                )}
                 <div
                   className="chatHeader__left"
                   onClick={() =>
@@ -3540,12 +3496,55 @@ export default function App() {
                   </div>
                 </div>
               )}
-              <div className="chatBody" ref={chatBodyRef} style={chatWallpaper ? { background: chatWallpaper } : {}}>
+              <div className="chatBody" ref={chatBodyRef} style={activeChat && chatWallpaper ? { background: chatWallpaper } : {}}>
                 {!activeChat ? (
-                  <div className="blank">
-                    <div className="blank__title">Чат не выбран</div>
-                    <div className="blank__text">
-                      Выберите беседу из списка или найдите друга
+                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                    <div style={{ padding: '16px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 18, color: 'white' }}>Переписки</div>
+                      <button onClick={() => setShowArchived(v => !v)}
+                        style={{ background: 'none', border: 'none', fontSize: 12, color: showArchived ? '#a78bfa' : 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '4px 8px', fontWeight: 600 }}>
+                        {showArchived ? '← Назад' : 'Архив'}
+                      </button>
+                    </div>
+                    <div style={{ padding: '0 12px 8px', flexShrink: 0 }}>
+                      <input value={chatSearch} onChange={e => setChatSearch(e.target.value)}
+                        placeholder="Поиск..."
+                        style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 14px', color: 'white', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                      {filteredChats.length === 0 ? (
+                        <div style={{ padding: 32, textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 14 }}>
+                          {chatSearch ? 'Ничего не найдено' : 'Чатов пока нет'}
+                        </div>
+                      ) : (
+                        filteredChats.map(chat => {
+                          const unread = unreadCounts[chat.id] || 0;
+                          return (
+                            <div key={chat.id}
+                              className="dmItem"
+                              style={{ padding: '10px 16px', cursor: 'pointer' }}
+                              onClick={() => setActiveChatId(chat.id)}
+                            >
+                              <div style={{ position: 'relative' }}>
+                                <Avatar url={chat.avatarUrl} name={chat.name} size={46} />
+                                <div className={chat.status === 'online' ? 'online-status' : 'offline-status'} />
+                              </div>
+                              <div className="dmMeta">
+                                <div className="dmName">{safeText(chat.name)}</div>
+                                <div className="dmSnippet">{safeText(chat.lastMessage || 'Нет сообщений')}</div>
+                              </div>
+                              <div className="dmRight">
+                                <div className="dmTime">{formatTime(chat.lastMessageTime)}</div>
+                                {unread > 0 && (
+                                  <div style={{ background: '#ef4444', color: 'white', borderRadius: 10, fontSize: 10, fontWeight: 800, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>
+                                    {unread > 99 ? '99+' : unread}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 ) : displayMessages.length === 0 ? (
@@ -3640,12 +3639,11 @@ export default function App() {
               )}
               <footer className="chatComposer">
                 <div className="composer-actions">
-                  <button
+                  <label
                     className="clipBtn"
-                    type="button"
+                    htmlFor={activeChat ? "chatImageInput" : undefined}
+                    style={{ cursor: activeChat ? "pointer" : "default", opacity: activeChat ? 1 : 0.4 }}
                     aria-label="Прикрепить"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!activeChat}
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                       <path
@@ -3656,7 +3654,18 @@ export default function App() {
                         strokeLinejoin="round"
                       />
                     </svg>
-                  </button>
+                  </label>
+                  <input
+                    id="chatImageInput"
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      handleSendImage(f);
+                    }}
+                  />
                 </div>
                 <input
                   className="chatInput"
@@ -3669,17 +3678,6 @@ export default function App() {
                       e.preventDefault();
                       handleSend();
                     }
-                  }}
-                />
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    e.target.value = "";
-                    handleSendImage(f);
                   }}
                 />
                 {!messageText.trim() && activeChat && (
@@ -3788,6 +3786,15 @@ export default function App() {
               ))}
             </div>
 
+            <div style={{ padding: '12px 24px 0' }}>
+              <input
+                value={friendsSearch}
+                onChange={e => setFriendsSearch(e.target.value)}
+                placeholder="Поиск людей..."
+                style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '9px 14px', color: 'white', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
             <div
               className="view-content"
               style={{ overflowY: "auto", padding: "0 24px 24px" }}
@@ -3802,7 +3809,7 @@ export default function App() {
                       fontSize: 13,
                     }}
                   >
-                    Введите минимум 2 символа для поиска пользователей.
+                    {friendsSearch.trim().length < 2 ? 'Введите минимум 2 символа для поиска пользователей.' : `Результаты поиска:`}
                   </div>
 
                   {friends.length > 0 && (

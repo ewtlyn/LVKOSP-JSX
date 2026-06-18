@@ -919,10 +919,10 @@ function CreatePost({
             />
             <button
               type="submit"
-              disabled={loading || (!text.trim() && !file)}
+              disabled={loading || (!text.trim() && files.length === 0)}
               style={{
                 background:
-                  loading || (!text.trim() && !file)
+                  loading || (!text.trim() && files.length === 0)
                     ? "rgba(255,255,255,0.05)"
                     : "rgba(255,255,255,0.13)",
                 border: "none",
@@ -930,7 +930,7 @@ function CreatePost({
                 borderRadius: 10,
                 padding: "7px 18px",
                 cursor:
-                  loading || (!text.trim() && !file)
+                  loading || (!text.trim() && files.length === 0)
                     ? "not-allowed"
                     : "pointer",
                 fontWeight: 700,

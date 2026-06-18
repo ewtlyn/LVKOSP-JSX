@@ -9,12 +9,14 @@ import { supabase } from "./lib/supabaseClient";
 import {
   authService,
   blocksService,
+  bookmarksService,
   chatService,
   followsService,
   friendsService,
   notificationService,
   notificationsService,
   postsService,
+  storiesService,
 } from "./services";
 
 const safeText = (s) => String(s ?? "");
@@ -55,6 +57,23 @@ const COLORS = [
   "#14b8a6",
   "#3b82f6",
 ];
+
+function renderText(text, onMentionClick) {
+  if (!text) return null
+  const parts = text.split(/(@\w+)/g)
+  return parts.map((part, i) => {
+    if (part.match(/^@\w+$/)) {
+      const username = part.slice(1)
+      return (
+        <span key={i} style={{ color: '#a78bfa', cursor: 'pointer', fontWeight: 600 }}
+          onClick={() => onMentionClick?.(username)}>
+          {part}
+        </span>
+      )
+    }
+    return part
+  })
+}
 
 function Avatar({ url, name, size = 40, style: extra = {} }) {
   const [err, setErr] = React.useState(false);
@@ -192,9 +211,11 @@ function PostCard({
   onUserClick,
   onDelete,
   onNotify,
+  onMentionClick,
 }) {
   const [likeCount, setLikeCount] = useState(post._likeCount || 0);
   const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(post._saved || false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -203,11 +224,20 @@ function PostCard({
   const [deleted, setDeleted] = useState(false);
   const [repostOriginal, setRepostOriginal] = useState(null);
   const [repostDone, setRepostDone] = useState(false);
+  const [extraMedia, setExtraMedia] = useState([]);
 
   useEffect(() => {
     if (post.repost_of_id)
       postsService.getRepostOf(post.repost_of_id).then(setRepostOriginal);
   }, [post.repost_of_id]);
+
+  useEffect(() => {
+    if (post.id && post.media_url) {
+      supabase.from('post_media').select('url, order_num').eq('post_id', post.id).order('order_num')
+        .then(({ data }) => { if (data?.length) setExtraMedia(data.map(d => d.url)) })
+        .catch(() => {})
+    }
+  }, [post.id]);
 
   async function handleDeletePost() {
     if (!window.confirm("Удалить пост?")) return;
@@ -244,6 +274,15 @@ function PostCard({
     } else if (!prev && post.author_id !== currentUser.id) {
       onNotify?.("like", post.author_id, post.id, post.content?.slice(0, 60));
     }
+  }
+
+  async function handleSave() {
+    if (!currentUser) return
+    const prev = saved
+    setSaved(!prev)
+    const res = await bookmarksService.toggle(currentUser.id, post.id)
+    if (typeof res.saved === 'boolean') setSaved(res.saved)
+    else setSaved(prev)
   }
 
   async function openComments() {
@@ -483,23 +522,32 @@ function PostCard({
       )}
       {!post.repost_of_id && post.content && (
         <div style={{ padding: "0 16px 10px", fontSize: 14, lineHeight: 1.6 }}>
-          {post.content}
+          {renderText(post.content, onMentionClick)}
         </div>
       )}
       {!post.repost_of_id && post.media_url && (
-        <img
-          src={post.media_url}
-          alt=""
-          onClick={() => window.open(post.media_url, "_blank")}
-          style={{
-            width: "100%",
-            maxHeight: 520,
-            objectFit: "contain",
-            display: "block",
-            cursor: "zoom-in",
-            background: "rgba(0,0,0,0.2)",
-          }}
-        />
+        extraMedia.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
+            {[post.media_url, ...extraMedia].map((url, i) => (
+              <img key={i} src={url} alt="" onClick={() => window.open(url, '_blank')}
+                style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }} />
+            ))}
+          </div>
+        ) : (
+          <img
+            src={post.media_url}
+            alt=""
+            onClick={() => window.open(post.media_url, "_blank")}
+            style={{
+              width: "100%",
+              maxHeight: 520,
+              objectFit: "contain",
+              display: "block",
+              cursor: "zoom-in",
+              background: "rgba(0,0,0,0.2)",
+            }}
+          />
+        )
       )}
       <div
         style={{
@@ -565,6 +613,14 @@ function PostCard({
           </svg>
           {commentsLoaded ? comments.length : ""}
         </button>
+        {currentUser && (
+          <button onClick={handleSave} title={saved ? 'Убрать из закладок' : 'В закладки'}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: saved ? '#f59e0b' : 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '6px 10px', borderRadius: 8, marginLeft: 'auto' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'}>
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
         {currentUser &&
           !post.repost_of_id &&
           currentUser.id !== post.author_id && (
@@ -715,29 +771,34 @@ function CreatePost({
   wallOwnerName = null,
 }) {
   const [text, setText] = useState("");
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const fileRef = useRef(null);
 
-  function pickFile(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
-    e.target.value = "";
+  function pickFiles(e) {
+    const picked = Array.from(e.target.files || []).slice(0, 4)
+    if (!picked.length) return
+    setFiles(prev => [...prev, ...picked].slice(0, 4))
+    setPreviews(prev => [...prev, ...picked.map(f => URL.createObjectURL(f))].slice(0, 4))
+    e.target.value = ""
+  }
+
+  function removeFile(i) {
+    setFiles(prev => prev.filter((_, j) => j !== i))
+    setPreviews(prev => prev.filter((_, j) => j !== i))
   }
 
   async function submit(e) {
     e.preventDefault();
-    if (!text.trim() && !file) return;
+    if (!text.trim() && files.length === 0) return;
     setLoading(true);
-    const res = await postsService.createPost(user.id, text, file, wallOwnerId);
+    const res = await postsService.createPost(user.id, text, files[0] || null, wallOwnerId, files.slice(1));
     setLoading(false);
     if (res.success) {
       setText("");
-      setFile(null);
-      setPreview(null);
+      setFiles([]);
+      setPreviews([]);
       onCreated?.();
     } else notificationService.showNotification("Ошибка", res.error, "error");
   }
@@ -791,44 +852,17 @@ function CreatePost({
               boxSizing: "border-box",
             }}
           />
-          {preview && (
-            <div
-              style={{
-                position: "relative",
-                marginTop: 8,
-                display: "inline-block",
-              }}
-            >
-              <img
-                src={preview}
-                alt=""
-                style={{ maxHeight: 160, borderRadius: 10, display: "block" }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setFile(null);
-                  setPreview(null);
-                }}
-                style={{
-                  position: "absolute",
-                  top: 4,
-                  right: 4,
-                  background: "rgba(0,0,0,0.7)",
-                  border: "none",
-                  color: "white",
-                  borderRadius: "50%",
-                  width: 22,
-                  height: 22,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                ×
-              </button>
+          {previews.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+              {previews.map((p, i) => (
+                <div key={i} style={{ position: 'relative', display: 'inline-block' }}>
+                  <img src={p} alt="" style={{ height: 100, width: 100, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+                  <button type="button" onClick={() => removeFile(i)} style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                </div>
+              ))}
+              {previews.length < 4 && (
+                <button type="button" onClick={() => fileRef.current?.click()} style={{ width: 100, height: 100, border: '1.5px dashed rgba(255,255,255,0.2)', borderRadius: 10, background: 'transparent', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 24 }}>+</button>
+              )}
             </div>
           )}
           <div
@@ -879,8 +913,9 @@ function CreatePost({
               ref={fileRef}
               type="file"
               accept="image/*"
+              multiple
               style={{ display: "none" }}
-              onChange={pickFile}
+              onChange={pickFiles}
             />
             <button
               type="submit"
@@ -921,8 +956,11 @@ function ProfileWall({
   onUserClick,
   onDelete,
   onNotify,
+  onMentionClick,
 }) {
   const [posts, setPosts] = useState([]);
+  const [bookmarks, setBookmarks] = useState([]);
+  const [profileSection, setProfileSection] = useState('posts');
   const [loading, setLoading] = useState(true);
   const [bannerUploading, setBannerUploading] = useState(false);
   const [localBannerUrl, setLocalBannerUrl] = useState(
@@ -935,6 +973,8 @@ function ProfileWall({
   const [followModal, setFollowModal] = useState(null); // 'followers' | 'following'
   const [followModalList, setFollowModalList] = useState([]);
   const [followModalLoading, setFollowModalLoading] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [mutualFriends, setMutualFriends] = useState([]);
   const bannerFileRef = useRef(null);
   const avatarFileRef = useRef(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -958,9 +998,15 @@ function ProfileWall({
       setFollowingCount(c.following);
     });
     if (!isMe) {
-      followsService
-        .isFollowing(currentUser.id, profileUser.id)
-        .then(setFollowing);
+      followsService.isFollowing(currentUser.id, profileUser.id).then(setFollowing);
+      // общие подписки (оба подписаны на одних и тех же)
+      Promise.all([
+        followsService.getFollowing(currentUser.id),
+        followsService.getFollowing(profileUser.id),
+      ]).then(([myF, theirF]) => {
+        const theirIds = new Set(theirF.map(u => u.id))
+        setMutualFriends(myF.filter(u => theirIds.has(u.id)).slice(0, 5))
+      })
     }
   }, [profileUser?.id, currentUser?.id, isMe]);
 
@@ -981,6 +1027,11 @@ function ProfileWall({
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
+
+  useEffect(() => {
+    if (!currentUser?.id || profileSection !== 'bookmarks') return
+    bookmarksService.getAll(currentUser.id).then(setBookmarks)
+  }, [currentUser?.id, profileSection])
 
   async function handleFollow() {
     if (followLoading || following === null) return;
@@ -1213,34 +1264,34 @@ function ProfileWall({
                 {profileUser.bio}
               </div>
             )}
-            <div style={{ display: "flex", gap: 16 }}>
-              <button
-                onClick={() => openFollowModal("followers")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "rgba(255,255,255,0.55)",
-                  cursor: "pointer",
-                  padding: 0,
-                  fontSize: 13,
-                }}
-              >
+            <div style={{ display: "flex", gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => openFollowModal("followers")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", padding: 0, fontSize: 13 }}>
                 <b style={{ color: "white" }}>{followerCount}</b> подписчиков
               </button>
-              <button
-                onClick={() => openFollowModal("following")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "rgba(255,255,255,0.55)",
-                  cursor: "pointer",
-                  padding: 0,
-                  fontSize: 13,
-                }}
-              >
+              <button onClick={() => openFollowModal("following")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", padding: 0, fontSize: 13 }}>
                 <b style={{ color: "white" }}>{followingCount}</b> подписок
               </button>
+              {isMe && (
+                <button onClick={() => setShowQR(true)} title="QR-код профиля"
+                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.6"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.6"/><rect x="5" y="5" width="3" height="3" fill="currentColor"/><rect x="16" y="5" width="3" height="3" fill="currentColor"/><rect x="5" y="16" width="3" height="3" fill="currentColor"/><path d="M14 14h3v3h-3zM17 17h3v3M17 14h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                </button>
+              )}
             </div>
+            {!isMe && mutualFriends.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                <div style={{ display: 'flex' }}>
+                  {mutualFriends.slice(0,3).map((f, i) => (
+                    <div key={f.id} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i }}>
+                      <Avatar url={f.avatar_url} name={f.name} size={20} style={{ border: '1.5px solid #0b0b0b' }} />
+                    </div>
+                  ))}
+                </div>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+                  {mutualFriends.length} общих {mutualFriends.length === 1 ? 'подписка' : 'подписки'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1254,17 +1305,27 @@ function ProfileWall({
         />
       )}
 
+      <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+        {[['posts', 'Посты'], ...(isMe ? [['bookmarks', 'Закладки']] : [])].map(([key, label]) => (
+          <button key={key} onClick={() => setProfileSection(key)}
+            style={{ padding: '5px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, background: profileSection === key ? 'rgba(255,255,255,0.13)' : 'transparent', color: profileSection === key ? 'white' : 'rgba(255,255,255,0.4)' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: 30,
-            color: "rgba(255,255,255,0.35)",
-            fontSize: 13,
-          }}
-        >
+        <div style={{ textAlign: "center", padding: 30, color: "rgba(255,255,255,0.35)", fontSize: 13 }}>
           Загрузка...
         </div>
+      ) : profileSection === 'bookmarks' ? (
+        bookmarks.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14, border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 14 }}>
+            Закладок пока нет
+          </div>
+        ) : bookmarks.map(p => (
+          <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} onUserClick={onUserClick} onDelete={onDelete} onNotify={onNotify} onMentionClick={onMentionClick} />
+        ))
       ) : posts.length === 0 ? (
         <div
           style={{
@@ -1290,6 +1351,7 @@ function ProfileWall({
             onUserClick={onUserClick}
             onDelete={onDelete}
             onNotify={onNotify}
+            onMentionClick={onMentionClick}
           />
         ))
       )}
@@ -1382,14 +1444,29 @@ function ProfileWall({
           </div>
         </div>
       )}
+      {showQR && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowQR(false)}>
+          <div style={{ background: '#1a1a2e', borderRadius: 20, padding: 24, textAlign: 'center', maxWidth: 280, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, marginBottom: 12 }}>QR-код профиля</div>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&bgcolor=1a1a2e&color=ffffff&data=${encodeURIComponent(`https://lvkosp.ru/profile/${profileUser?.username || profileUser?.id}`)}`}
+              alt="QR" style={{ width: 200, height: 200, borderRadius: 12, display: 'block', margin: '0 auto 12px' }}
+            />
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 16 }}>@{profileUser?.username}</div>
+            <button onClick={() => setShowQR(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 10, padding: '8px 20px', color: 'white', cursor: 'pointer', fontSize: 14 }}>Закрыть</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-function SettingsPanel({ user, onUserUpdate }) {
+function SettingsPanel({ user, onUserUpdate, onLogout }) {
   const [name, setName] = useState(user?.name || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState(null);
+  const [isPrivate, setIsPrivate] = useState(user?.is_private || false);
 
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -1430,6 +1507,14 @@ function SettingsPanel({ user, onUserUpdate }) {
     } else {
       setPwdMsg({ ok: false, text: res.error });
     }
+  }
+
+  async function togglePrivate() {
+    const next = !isPrivate
+    setIsPrivate(next)
+    const res = await authService.setPrivate(user.id, next)
+    if (!res.success) setIsPrivate(!next)
+    else onUserUpdate?.({ ...user, is_private: next })
   }
 
   const inp = {
@@ -1580,19 +1665,147 @@ function SettingsPanel({ user, onUserUpdate }) {
           </button>
         </form>
       </div>
+
+      <div style={{ marginTop: 16, padding: '14px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: 'rgba(255,255,255,0.6)', letterSpacing: 0.5 }}>КОНФИДЕНЦИАЛЬНОСТЬ</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Закрытый профиль</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Посты видны только подписчикам</div>
+          </div>
+          <button onClick={togglePrivate} style={{ width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: isPrivate ? '#a78bfa' : 'rgba(255,255,255,0.15)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+            <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'white', position: 'absolute', top: 3, left: isPrivate ? 23 : 3, transition: 'left 0.2s' }} />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <button onClick={onLogout}
+          style={{ width: '100%', background: 'rgba(255,80,80,0.08)', border: '1px solid rgba(255,80,80,0.2)', borderRadius: 14, padding: '11px', color: 'rgba(255,120,120,0.9)', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+          Выйти из аккаунта
+        </button>
+      </div>
     </div>
   );
 }
+function StoriesBar({ currentUser, followingIds, onUserClick }) {
+  const [stories, setStories] = useState([])
+  const [myStories, setMyStories] = useState([])
+  const [viewer, setViewer] = useState(null) // { list, index }
+  const fileRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+
+  const loadStories = useCallback(async () => {
+    if (!currentUser?.id) return
+    const ids = [...(followingIds || []), currentUser.id]
+    const [all, mine] = await Promise.all([
+      storiesService.getActive(ids),
+      storiesService.getMyActive(currentUser.id),
+    ])
+    setStories(all)
+    setMyStories(mine)
+  }, [currentUser?.id, followingIds?.join(',')])
+
+  useEffect(() => { loadStories() }, [loadStories])
+
+  const grouped = useMemo(() => {
+    const map = new Map()
+    for (const s of stories) {
+      if (!map.has(s.user_id)) map.set(s.user_id, { user: s.user, items: [] })
+      map.get(s.user_id).items.push(s)
+    }
+    return [...map.values()]
+  }, [stories])
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploading(true)
+    try {
+      const res = await storiesService.create(currentUser.id, file)
+      if (res.success) { notificationService.showNotification('Сторис добавлен!', '', 'success'); loadStories() }
+      else notificationService.showNotification('Ошибка', res.error, 'error')
+    } catch (e) {
+      notificationService.showNotification('Ошибка', e.message, 'error')
+    }
+    setUploading(false)
+  }
+
+  if (grouped.length === 0 && myStories.length === 0 && !currentUser) return null
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '4px 0 12px', scrollbarWidth: 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }} onClick={() => fileRef.current?.click()}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', position: 'relative' }}>
+            {uploading ? <div style={{ width: 20, height: 20, border: '2px solid #a78bfa', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> : (
+              <>
+                <Avatar url={currentUser?.avatar_url} name={currentUser?.name} size={52} />
+                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18, borderRadius: '50%', background: '#a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, border: '2px solid #0b0b0b' }}>+</div>
+              </>
+            )}
+          </div>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Мой сторис</span>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
+        {grouped.map(({ user, items }) => {
+          const hasMe = user.id === currentUser?.id
+          return (
+            <div key={user.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}
+              onClick={() => setViewer({ list: items, index: 0 })}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', padding: 2, background: 'linear-gradient(135deg,#a78bfa,#ec4899)', flexShrink: 0 }}>
+                <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '2px solid #0b0b0b', overflow: 'hidden' }}>
+                  <Avatar url={user.avatar_url} name={user.name} size={52} />
+                </div>
+              </div>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</span>
+            </div>
+          )
+        })}
+      </div>
+      {viewer && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setViewer(null)}>
+          <div style={{ position: 'relative', maxWidth: 400, maxHeight: '90vh', width: '100%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', gap: 4, position: 'absolute', top: -24, left: 0, right: 0 }}>
+              {viewer.list.map((_, i) => (
+                <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= viewer.index ? '#a78bfa' : 'rgba(255,255,255,0.2)' }} />
+              ))}
+            </div>
+            <img src={viewer.list[viewer.index].media_url} alt="" style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: 12, display: 'block' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'absolute', top: 8, left: 8 }}>
+              <Avatar url={viewer.list[viewer.index].user?.avatar_url} name={viewer.list[viewer.index].user?.name} size={32} />
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{viewer.list[viewer.index].user?.name}</span>
+            </div>
+            <button onClick={() => setViewer(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            {viewer.index > 0 && <button onClick={() => setViewer(v => ({ ...v, index: v.index - 1 }))} style={{ position: 'absolute', left: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>‹</button>}
+            {viewer.index < viewer.list.length - 1 && <button onClick={() => setViewer(v => ({ ...v, index: v.index + 1 }))} style={{ position: 'absolute', right: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>›</button>}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function GlobalFeed({
   currentUser,
   onShareClick,
   onUserClick,
   onDelete,
   onNotify,
+  onMentionClick,
 }) {
   const [tab, setTab] = useState("all");
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [followingIds, setFollowingIds] = useState([])
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      followsService.getFollowing(currentUser.id).then(list => setFollowingIds(list.map(u => u.id)))
+    }
+  }, [currentUser?.id])
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
@@ -1618,6 +1831,7 @@ function GlobalFeed({
 
   return (
     <div>
+      <StoriesBar currentUser={currentUser} followingIds={followingIds} onUserClick={onUserClick} />
       <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
         {[
           ["all", "Все"],
@@ -1681,6 +1895,7 @@ function GlobalFeed({
             onUserClick={onUserClick}
             onDelete={onDelete}
             onNotify={onNotify}
+            onMentionClick={onMentionClick}
           />
         ))
       )}
@@ -1814,6 +2029,57 @@ function ShareModal({ post, friends, onClose, onSend }) {
   );
 }
 
+const URL_REGEX = /https?:\/\/[^\s<>"']+/gi
+
+function LinkPreview({ url }) {
+  const [meta, setMeta] = useState(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const cacheKey = `lvkosp_lp_${url}`
+    const cached = sessionStorage.getItem(cacheKey)
+    if (cached) { try { setMeta(JSON.parse(cached)) } catch {} return }
+
+    const proxyUrl = `https://allorigins.win/get?disableCache=true&url=${encodeURIComponent(url)}`
+    fetch(proxyUrl, { signal: AbortSignal.timeout(5000) })
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return
+        const html = data.contents || ''
+        const getTag = (prop) => {
+          const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]*content=["']([^"']+)["']`, 'i'))
+            || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${prop}["']`, 'i'))
+          return m?.[1] || ''
+        }
+        const title = getTag('og:title') || getTag('twitter:title') || html.match(/<title[^>]*>([^<]+)/i)?.[1] || ''
+        const description = getTag('og:description') || getTag('twitter:description') || ''
+        const image = getTag('og:image') || getTag('twitter:image') || ''
+        const favicon = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=16`
+        const hostname = new URL(url).hostname.replace('www.', '')
+        const result = { title: title.trim(), description: description.trim(), image, favicon, hostname }
+        setMeta(result)
+        sessionStorage.setItem(cacheKey, JSON.stringify(result))
+      })
+      .catch(() => { if (!cancelled) setError(true) })
+    return () => { cancelled = true }
+  }, [url])
+
+  if (error || !meta || !meta.title) return null
+
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 6, borderLeft: '3px solid #a78bfa', borderRadius: 8, background: 'rgba(167,139,250,0.07)', padding: '8px 10px', textDecoration: 'none', color: 'inherit' }}>
+      {meta.image && <img src={meta.image} alt="" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 6, marginBottom: 6, display: 'block' }} onError={e => e.target.style.display='none'} />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+        <img src={meta.favicon} alt="" width={14} height={14} onError={e => e.target.style.display='none'} />
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{meta.hostname}</span>
+      </div>
+      {meta.title && <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{meta.title}</div>}
+      {meta.description && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4, marginTop: 2 }}>{meta.description.slice(0, 100)}</div>}
+    </a>
+  )
+}
+
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
 function MessageBubble({
@@ -1826,6 +2092,9 @@ function MessageBubble({
   onForward,
   onReply,
   currentUserId,
+  onMentionClick,
+  onPin,
+  isPinned,
 }) {
   const [hover, setHover] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1891,142 +2160,51 @@ function MessageBubble({
       style={{ position: "relative" }}
     >
       {hover && !editing && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "100%",
-            [isMe ? "right" : "left"]: 0,
-            background: "rgba(18,18,18,0.97)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 10,
-            padding: 4,
-            display: "flex",
-            gap: 2,
-            zIndex: 50,
-            whiteSpace: "nowrap",
-          }}
-        >
+        <div style={{ position: 'absolute', bottom: 'calc(100% + 4px)', [isMe ? 'right' : 'left']: 0, display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 4, zIndex: 50 }}>
+          {/* Быстрые реакции */}
           {currentUserId && (
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => setShowEmoji((v) => !v)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "rgba(255,255,255,0.75)",
-                  padding: "5px 8px",
-                  borderRadius: 7,
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >
-                😊
-              </button>
-              {showEmoji && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "100%",
-                    left: 0,
-                    background: "rgba(18,18,18,0.98)",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    borderRadius: 12,
-                    padding: "6px 8px",
-                    display: "flex",
-                    gap: 4,
-                    zIndex: 100,
-                  }}
-                >
-                  {QUICK_EMOJIS.map((e) => (
-                    <button
-                      key={e}
-                      onClick={() => toggleReaction(e)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: 18,
-                        padding: "2px 4px",
-                        borderRadius: 6,
-                        ...(rxGroups[e]?.mine
-                          ? { background: "rgba(255,255,255,0.12)" }
-                          : {}),
-                      }}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div style={{ background: 'rgba(22,22,22,0.96)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 24, padding: '4px 8px', display: 'flex', gap: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+              {QUICK_EMOJIS.map(e => (
+                <button key={e} onClick={() => toggleReaction(e)}
+                  style={{ background: rxGroups[e]?.mine ? 'rgba(255,255,255,0.15)' : 'none', border: 'none', cursor: 'pointer', fontSize: 17, padding: '3px 5px', borderRadius: 20, transition: 'background 0.1s' }}>
+                  {e}
+                </button>
+              ))}
             </div>
           )}
-          {onReply && (
-            <button
-              onClick={() => onReply(msg)}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "rgba(255,255,255,0.75)",
-                padding: "5px 10px",
-                borderRadius: 7,
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              ↩ Ответить
-            </button>
-          )}
-          {isMe && (
-            <button
-              onClick={() => {
-                setEditing(true);
-                setEditText(msg.content || "");
-              }}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "rgba(255,255,255,0.75)",
-                padding: "5px 10px",
-                borderRadius: 7,
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              ✏️ Изменить
-            </button>
-          )}
-          {onForward && (msg.content || msg.media_url) && (
-            <button
-              onClick={() => onForward(msg)}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "rgba(255,255,255,0.75)",
-                padding: "5px 10px",
-                borderRadius: 7,
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              ↪ Переслать
-            </button>
-          )}
-          {isMe && (
-            <button
-              onClick={() => onDelete(msg.id)}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "rgba(255,100,100,0.85)",
-                padding: "5px 10px",
-                borderRadius: 7,
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              🗑 Удалить
-            </button>
-          )}
+          {/* Действия */}
+          <div style={{ background: 'rgba(22,22,22,0.96)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '3px', display: 'flex', gap: 1, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+            {onReply && (
+              <button onClick={() => onReply(msg)} title="Ответить"
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.65)', cursor: 'pointer', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 10H5l7-7 7 7h-4v4a7 7 0 0 1-7 7H5a9 9 0 0 0 4-7v-4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
+              </button>
+            )}
+            {onForward && (msg.content || msg.media_url) && (
+              <button onClick={() => onForward(msg)} title="Переслать"
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.65)', cursor: 'pointer', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 10h4l-7-7-7 7h4v4a7 7 0 0 0 7 7h3a9 9 0 0 1-4-7v-4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
+              </button>
+            )}
+            {isMe && (
+              <button onClick={() => { setEditing(true); setEditText(msg.content || '') }} title="Изменить"
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.65)', cursor: 'pointer', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+              </button>
+            )}
+            {isMe && (
+              <button onClick={() => onDelete(msg.id)} title="Удалить"
+                style={{ background: 'none', border: 'none', color: 'rgba(255,100,100,0.7)', cursor: 'pointer', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+              </button>
+            )}
+            {onPin && (
+              <button onClick={() => onPin(msg)} title={isPinned ? 'Открепить' : 'Закрепить'}
+                style={{ background: 'none', border: 'none', color: isPinned ? '#f59e0b' : 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill={isPinned ? 'currentColor' : 'none'}><path d="M12 2v10M5 9l7-7 7 7M5 15l7 9 7-9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            )}
+          </div>
         </div>
       )}
       <div className="msgBubble">
@@ -2064,7 +2242,12 @@ function MessageBubble({
             </div>
           </div>
         )}
-        {msg.type === "image" && msg.media_url ? (
+        {msg.type === "voice" && msg.media_url ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color: '#a78bfa', flexShrink: 0 }}><rect x="9" y="2" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+            <audio controls src={msg.media_url} style={{ height: 32, maxWidth: 200 }} />
+          </div>
+        ) : msg.type === "image" && msg.media_url ? (
           <img
             src={msg.media_url}
             alt="фото"
@@ -2129,7 +2312,10 @@ function MessageBubble({
             </div>
           </div>
         ) : (
-          <span>{highlight(safeText(msg.content))}</span>
+          <>
+            <span>{renderText(safeText(msg.content), onMentionClick)}</span>
+            {(msg.content?.match(URL_REGEX) || []).slice(0, 1).map(u => <LinkPreview key={u} url={u} />)}
+          </>
         )}
         {Object.keys(rxGroups).length > 0 && (
           <div
@@ -2173,6 +2359,17 @@ function MessageBubble({
   );
 }
 
+const WALLPAPERS = [
+  { id: '', label: 'По умолчанию', bg: '' },
+  { id: 'blue', label: 'Океан', bg: 'linear-gradient(160deg,#0a1628 0%,#0d2240 50%,#102a50 100%)' },
+  { id: 'purple', label: 'Сумерки', bg: 'linear-gradient(135deg,#1a0d2e 0%,#2d1a4a 100%)' },
+  { id: 'green', label: 'Лес', bg: 'linear-gradient(135deg,#0a1f0a 0%,#1a3320 100%)' },
+  { id: 'red', label: 'Гранат', bg: 'linear-gradient(135deg,#2a0a0a 0%,#3d1212 100%)' },
+  { id: 'grey', label: 'Туман', bg: 'linear-gradient(135deg,#141414 0%,#252530 100%)' },
+  { id: 'gold', label: 'Закат', bg: 'linear-gradient(135deg,#1f1600 0%,#2e2000 50%,#1a0f00 100%)' },
+  { id: 'teal', label: 'Бирюза', bg: 'linear-gradient(135deg,#001f1f 0%,#003333 100%)' },
+]
+
 // ─── Main ──────────────────────────────────────────────────────────────────
 export default function App() {
   // аутф
@@ -2197,12 +2394,18 @@ export default function App() {
 
   // чаты
   const [chats, setChats] = useState([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
   const chatBodyRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const [recording, setRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const recordTimerRef = useRef(null);
 
   // поиск по сообщениям
   const [msgSearchOpen, setMsgSearchOpen] = useState(false);
@@ -2224,6 +2427,16 @@ export default function App() {
 
   // reply
   const [replyTo, setReplyTo] = useState(null);
+
+  // обои чатов
+  const [wallpaperPickerOpen, setWallpaperPickerOpen] = useState(false)
+  const chatWallpaper = useMemo(() => {
+    if (!activeChatId) return ''
+    return localStorage.getItem(`lvkosp_wp_${activeChatId}`) || ''
+  }, [activeChatId, wallpaperPickerOpen])
+
+  // закреп и архив
+  const [pinnedMsg, setPinnedMsg] = useState(null)
 
   // увед
   const [dbNotifs, setDbNotifs] = useState([]);
@@ -2302,6 +2515,12 @@ export default function App() {
       setPendingRequests(reqs);
     })();
     const t = setInterval(() => authService.updateOnlineStatus(user.id), 60000);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/LVKOSP-JSX/sw.js').catch(() => {})
+    }
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
     notificationsService.getUnread(user.id).then(setDbNotifs);
     notificationsService.getUnreadCount(user.id).then(setDbNotifsUnread);
 
@@ -2347,10 +2566,15 @@ export default function App() {
     setMsgSearchQuery("");
     setMsgSearchOpen(false);
     setReplyTo(null);
+    setPinnedMsg(null);
     (async () => {
-      const msgs = await chatService.getMessages(activeChatId, user.id);
+      const [msgs, pinned] = await Promise.all([
+        chatService.getMessages(activeChatId, user.id),
+        chatService.getPinnedMessage(activeChatId).catch(() => null),
+      ]);
       if (!alive) return;
       setMessages(msgs);
+      setPinnedMsg(pinned);
       resetUnread(activeChatId);
       scrollToBottom();
     })();
@@ -2480,6 +2704,62 @@ export default function App() {
         e?.message || "Не удалось отправить фото",
         "error",
       );
+    }
+  }
+
+  async function startRecording() {
+    if (!activeChatId) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      audioChunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const file = new File([blob], `voice_${Date.now()}.webm`, { type: 'audio/webm' })
+        try {
+          const url = await chatService.uploadChatImage(file, activeChatId, user.id)
+          const { data } = await supabase.from('messages').insert({ chat_id: activeChatId, sender_id: user.id, type: 'voice', content: '', media_url: url, created_at: new Date().toISOString(), read: false }).select().single()
+          if (data) {
+            setMessages(prev => prev.find(m => m.id === data.id) ? prev : [...prev, { ...data, sender: { id: user.id, name: user.name, avatar_url: user.avatar_url || '' } }])
+            scrollToBottom()
+          }
+        } catch (e) {
+          notificationService.showNotification('Ошибка', 'Не удалось отправить голосовое', 'error')
+        }
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setRecording(true)
+      setRecordingTime(0)
+      recordTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
+    } catch {
+      notificationService.showNotification('Ошибка', 'Нет доступа к микрофону', 'error')
+    }
+  }
+
+  async function handlePinMessage(msg) {
+    const isPinned = pinnedMsg?.id === msg.id
+    if (isPinned) {
+      await chatService.unpinMessage(activeChatId)
+      setPinnedMsg(null)
+    } else {
+      await chatService.pinMessage(activeChatId, msg.id)
+      setPinnedMsg({ id: msg.id, content: msg.content, type: msg.type, sender: msg.sender })
+    }
+  }
+
+  function stopRecording(send = true) {
+    clearInterval(recordTimerRef.current)
+    setRecording(false)
+    setRecordingTime(0)
+    if (mediaRecorderRef.current?.state !== 'inactive') {
+      if (!send) {
+        mediaRecorderRef.current.onstop = () => {}
+        audioChunksRef.current = []
+      }
+      mediaRecorderRef.current.stop()
     }
   }
 
@@ -2683,13 +2963,14 @@ export default function App() {
 
   const filteredChats = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q || activeTab !== "chats") return chats;
-    return chats.filter(
+    const base = chats.filter(c => showArchived ? c.archived : !c.archived)
+    if (!q || activeTab !== "chats") return base;
+    return base.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (c.lastMessage || "").toLowerCase().includes(q),
     );
-  }, [chats, search, activeTab]);
+  }, [chats, search, activeTab, showArchived]);
 
   const profileUser = viewingUser || user;
 
@@ -2815,197 +3096,37 @@ export default function App() {
           </div>
 
           <nav className="tabs">
-            <button
-              className={`tab ${activeTab === "chats" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => setActiveTab("chats")}
-            >
-              <span className="tab__icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M7.5 18.5H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8.5a3 3 0 0 1-3 3h-5.2l-3.6 2.6a.9.9 0 0 1-1.4-.7v-1.9Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
+            <button className={`tab ${activeTab === "chats" ? "is-active" : ""}`} type="button"
+              onClick={() => { setActiveTab("chats"); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7.5 18.5H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8.5a3 3 0 0 1-3 3h-5.2l-3.6 2.6a.9.9 0 0 1-1.4-.7v-1.9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg></span>
               <span className="tab__label">Чаты</span>
-              {totalUnread > 0 && (
-                <span className="notification-badge">
-                  {totalUnread > 99 ? "99+" : totalUnread}
-                </span>
-              )}
+              {totalUnread > 0 && <span className="notification-badge">{totalUnread > 99 ? "99+" : totalUnread}</span>}
             </button>
-            <button
-              className={`tab ${activeTab === "friends" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => setActiveTab("friends")}
-            >
-              <span className="tab__icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx="9"
-                    cy="7"
-                    r="4"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                  <path
-                    d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </span>
+            <button className={`tab ${activeTab === "friends" ? "is-active" : ""}`} type="button"
+              onClick={() => { setActiveTab("friends"); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg></span>
               <span className="tab__label">Друзья</span>
-              {pendingRequests.length > 0 && (
-                <span className="notification-badge">
-                  {pendingRequests.length}
-                </span>
-              )}
+              {pendingRequests.length > 0 && <span className="notification-badge">{pendingRequests.length}</span>}
             </button>
-            <button
-              className={`tab ${activeTab === "feed" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => {
-                setActiveTab("feed");
-                setSidebarOpen(false);
-              }}
-            >
-              <span className="tab__icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <rect
-                    x="3"
-                    y="4"
-                    width="18"
-                    height="3"
-                    rx="1.5"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                  <rect
-                    x="3"
-                    y="10.5"
-                    width="18"
-                    height="3"
-                    rx="1.5"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                  <rect
-                    x="3"
-                    y="17"
-                    width="11"
-                    height="3"
-                    rx="1.5"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                </svg>
-              </span>
+            <button className={`tab ${activeTab === "feed" ? "is-active" : ""}`} type="button"
+              onClick={() => { setActiveTab("feed"); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="10.5" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="17" width="11" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg></span>
               <span className="tab__label">Лента</span>
             </button>
-            <button
-              className={`tab ${activeTab === "profile" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => {
-                setActiveTab("profile");
-                setViewingUser(null);
-              }}
-            >
-              <span className="tab__icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx="12"
-                    cy="7"
-                    r="4"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                </svg>
-              </span>
+            <button className={`tab ${activeTab === "profile" ? "is-active" : ""}`} type="button"
+              onClick={() => { setActiveTab("profile"); setViewingUser(null); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /></svg></span>
               <span className="tab__label">Профиль</span>
-            </button>
-            <button
-              className={`tab ${activeTab === "notifs" ? "is-active" : ""}`}
-              type="button"
-              onClick={async () => {
-                setActiveTab("notifs");
-                setSidebarOpen(false);
-                const n = await notificationsService.getUnread(user.id);
-                setDbNotifs(n);
-                notificationsService.markAllRead(user.id);
-                setDbNotifsUnread(0);
-              }}
-            >
-              <span className="tab__icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M13.73 21a2 2 0 0 1-3.46 0"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </span>
-              <span className="tab__label">Уведомл.</span>
-              {dbNotifsUnread > 0 && (
-                <span className="notification-badge">
-                  {dbNotifsUnread > 99 ? "99+" : dbNotifsUnread}
-                </span>
-              )}
-            </button>
-            <button
-              className={`tab ${activeTab === "settings" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => {
-                setActiveTab("settings");
-                setSidebarOpen(false);
-              }}
-            >
-              <span className="tab__icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="3"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                  <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </span>
-              <span className="tab__label">Настройки</span>
             </button>
           </nav>
 
-          <div className="sectionTitle">Сообщения</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px 4px' }}>
+            <div className="sectionTitle" style={{ margin: 0 }}>Сообщения</div>
+            <button onClick={() => setShowArchived(v => !v)}
+              style={{ background: 'none', border: 'none', fontSize: 11, color: showArchived ? '#a78bfa' : 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: '2px 6px', fontWeight: 600 }}>
+              {showArchived ? '← Назад' : 'Архив'}
+            </button>
+          </div>
 
           <div className="dmList">
             {filteredChats.length === 0 ? (
@@ -3077,45 +3198,29 @@ export default function App() {
 
           {/* Me card */}
           <div className="meCard">
-            <div style={{ position: "relative", flexShrink: 0 }}>
+            <div style={{ position: "relative", flexShrink: 0, cursor: 'pointer' }}
+              onClick={() => { setActiveTab('profile'); setViewingUser(null); setSidebarOpen(false) }}>
               <Avatar url={user?.avatar_url} name={user?.name} size={40} />
               <div className="online-status" />
             </div>
-            <div className="meCard__meta">
+            <div className="meCard__meta" style={{ cursor: 'pointer' }}
+              onClick={() => { setActiveTab('profile'); setViewingUser(null); setSidebarOpen(false) }}>
               <div className="meCard__name">{user?.name || "User"}</div>
               <div className="meCard__user">@{user?.username || "user"}</div>
             </div>
-            <button
-              className="iconBtn"
-              type="button"
-              title="Выйти"
-              onClick={doLogout}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-                <polyline
-                  points="16 17 21 12 16 7"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <line
-                  x1="21"
-                  y1="12"
-                  x2="9"
-                  y2="12"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+            <div style={{ display: 'flex', gap: 2 }}>
+              <button className="iconBtn" type="button" title="Уведомления"
+                style={{ position: 'relative', color: activeTab === 'notifs' ? 'white' : undefined }}
+                onClick={async () => { setActiveTab("notifs"); setSidebarOpen(false); const n = await notificationsService.getUnread(user.id); setDbNotifs(n); notificationsService.markAllRead(user.id); setDbNotifsUnread(0) }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                {dbNotifsUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0b0b0b' }} />}
+              </button>
+              <button className="iconBtn" type="button" title="Настройки"
+                style={{ color: activeTab === 'settings' ? 'white' : undefined }}
+                onClick={() => { setActiveTab("settings"); setSidebarOpen(false) }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+              </button>
+            </div>
           </div>
         </aside>
 
@@ -3219,6 +3324,11 @@ export default function App() {
                 <div className="chatHeader__right">
                   {activeChat && (
                     <>
+                      <button className="iconBtn" title="Обои чата"
+                        style={{ color: chatWallpaper ? 'rgba(167,139,250,0.9)' : undefined }}
+                        onClick={() => setWallpaperPickerOpen(v => !v)}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><path d="m3 15 5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </button>
                       <button
                         className="iconBtn"
                         title="Поиск по сообщениям"
@@ -3285,6 +3395,16 @@ export default function App() {
                           />
                         </svg>
                       </button>
+                      <button className="iconBtn" title={activeChat?.archived ? 'Из архива' : 'В архив'}
+                        style={{ color: activeChat?.archived ? '#a78bfa' : 'rgba(255,255,255,0.45)' }}
+                        onClick={async () => {
+                          if (!activeChatId || !user?.id) return
+                          const wasArchived = activeChat?.archived
+                          await chatService.setArchived(activeChatId, user.id, !wasArchived)
+                          setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, archived: !wasArchived } : c))
+                        }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><line x1="12" y1="12" x2="12" y2="17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M9 14l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                      </button>
                     </>
                   )}
                 </div>
@@ -3331,7 +3451,36 @@ export default function App() {
                 </div>
               )}
 
-              <div className="chatBody" ref={chatBodyRef}>
+              {pinnedMsg && activeChat && (
+                <div style={{ padding: '6px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#f59e0b', flexShrink: 0 }}><path d="M12 2v10M5 9l7-7 7 7M5 15l7 9 7-9" stroke="currentColor" fill="none" strokeWidth="1.7" strokeLinecap="round"/></svg>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600, letterSpacing: 0.3 }}>ЗАКРЕПЛЕНО</div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {pinnedMsg.type === 'image' ? '📷 Фото' : pinnedMsg.type === 'voice' ? '🎙 Голосовое' : (pinnedMsg.content || '').slice(0, 60)}
+                    </div>
+                  </div>
+                  <button onClick={() => handlePinMessage(pinnedMsg)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: 4, borderRadius: 4, fontSize: 14 }}>✕</button>
+                </div>
+              )}
+              {wallpaperPickerOpen && activeChat && (
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(0,0,0,0.2)', flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 600, marginBottom: 8, letterSpacing: 0.5 }}>ОБОИ ЧАТА</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {WALLPAPERS.map(w => (
+                      <button key={w.id} onClick={() => {
+                        if (w.id) localStorage.setItem(`lvkosp_wp_${activeChatId}`, w.bg)
+                        else localStorage.removeItem(`lvkosp_wp_${activeChatId}`)
+                        setWallpaperPickerOpen(false)
+                      }} title={w.label}
+                        style={{ width: 36, height: 36, borderRadius: 10, border: chatWallpaper === w.bg && w.id ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.12)', cursor: 'pointer', background: w.bg || 'rgba(255,255,255,0.06)', flexShrink: 0, position: 'relative' }}>
+                        {!w.id && <span style={{ fontSize: 14 }}>✕</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="chatBody" ref={chatBodyRef} style={chatWallpaper ? { background: chatWallpaper } : {}}>
                 {!activeChat ? (
                   <div className="blank">
                     <div className="blank__title">Чат не выбран</div>
@@ -3365,6 +3514,9 @@ export default function App() {
                       onForward={setForwardMsg}
                       onReply={setReplyTo}
                       currentUserId={user.id}
+                      onMentionClick={(username) => { /* TODO: open profile by username */ }}
+                      onPin={handlePinMessage}
+                      isPinned={pinnedMsg?.id === msg.id}
                     />
                   ))
                 )}
@@ -3470,6 +3622,19 @@ export default function App() {
                     handleSendImage(f);
                   }}
                 />
+                {!messageText.trim() && activeChat && (
+                  recording ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: '#ef4444', minWidth: 36 }}>{Math.floor(recordingTime/60).toString().padStart(2,'0')}:{(recordingTime%60).toString().padStart(2,'0')}</span>
+                      <button type="button" onClick={() => stopRecording(false)} style={{ background: 'rgba(255,80,80,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: 12 }}>✕</button>
+                      <button type="button" onClick={() => stopRecording(true)} style={{ background: 'rgba(167,139,250,0.2)', border: 'none', borderRadius: 8, padding: '4px 8px', color: '#a78bfa', cursor: 'pointer', fontSize: 12 }}>✓</button>
+                    </div>
+                  ) : (
+                    <button type="button" className="clipBtn" onClick={startRecording} title="Голосовое сообщение">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="2" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                    </button>
+                  )
+                )}
                 <button
                   className="sendBtn"
                   type="button"
@@ -3831,6 +3996,9 @@ export default function App() {
                 currentUser={user}
                 onShareClick={setSharePost}
                 onUserClick={openProfile}
+                onMentionClick={(username) => {
+                  // TODO: open profile by username lookup
+                }}
                 onNotify={(type, toId, entityId, preview) =>
                   notificationsService.create(
                     toId,
@@ -3872,19 +4040,10 @@ export default function App() {
                 </div>
               </div>
               {!viewingUser && (
-                <button
-                  onClick={doLogout}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    color: "rgba(255,255,255,0.6)",
-                    borderRadius: 10,
-                    padding: "6px 14px",
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  Выйти
+                <button className="iconBtn" title="Уведомления" style={{ position: 'relative', color: activeTab === 'notifs' ? 'white' : undefined }}
+                  onClick={async () => { setActiveTab("notifs"); setSidebarOpen(false); const n = await notificationsService.getUnread(user.id); setDbNotifs(n); notificationsService.markAllRead(user.id); setDbNotifsUnread(0) }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  {dbNotifsUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0b0b0b' }} />}
                 </button>
               )}
             </div>
@@ -3948,6 +4107,7 @@ export default function App() {
                   setUser((prev) => ({ ...prev, banner_url: url }))
                 }
                 onUserClick={openProfile}
+                onMentionClick={(username) => { /* TODO */ }}
                 onNotify={(type, toId, entityId, preview) =>
                   notificationsService.create(
                     toId,
@@ -4061,7 +4221,7 @@ export default function App() {
               className="view-content"
               style={{ overflowY: "auto", padding: 20 }}
             >
-              <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} />
+              <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={doLogout} />
             </div>
           </section>
         </main>

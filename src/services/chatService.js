@@ -10,7 +10,7 @@ export class ChatService {
     try {
       const { data: chatMemberships, error } = await supabase
         .from('chat_members')
-        .select(`chat_id, chats ( id, created_at, updated_at, last_message_content, last_message_at )`)
+        .select(`chat_id, archived, chats ( id, created_at, updated_at, last_message_content, last_message_at )`)
         .eq('user_id', userId)
 
       if (error || !chatMemberships?.length) return []
@@ -40,6 +40,7 @@ export class ChatService {
           lastMessageTime: chat.last_message_at || chat.created_at,
           userId: otherMember.id,
           status, unreadCount: 0,
+          archived: membership.archived || false,
         })
       }
       const seen = new Map()
@@ -196,5 +197,43 @@ export class ChatService {
     } catch (e) {
       return { success: false, error: e?.message || 'Ошибка удаления' }
     }
+  }
+
+  async setArchived(chatId, userId, archived) {
+    const { error } = await supabase.from('chat_members')
+      .update({ archived }).eq('chat_id', chatId).eq('user_id', userId)
+    return !error
+  }
+
+  async pinMessage(chatId, messageId) {
+    const { error } = await supabase.from('chats')
+      .update({ pinned_message_id: messageId }).eq('id', chatId)
+    return !error
+  }
+
+  async unpinMessage(chatId) {
+    const { error } = await supabase.from('chats')
+      .update({ pinned_message_id: null }).eq('id', chatId)
+    return !error
+  }
+
+  async getPinnedMessage(chatId) {
+    const { data } = await supabase.from('chats')
+      .select('pinned_message_id, pinned:messages!chats_pinned_message_id_fkey(id, content, type, sender:profiles(name))')
+      .eq('id', chatId).single()
+    return data?.pinned || null
+  }
+
+  async editMessage(messageId, content) {
+    const { error } = await supabase.from('messages')
+      .update({ content: content.trim(), edited: true }).eq('id', messageId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }
+
+  async deleteMessage(messageId) {
+    const { error } = await supabase.from('messages').delete().eq('id', messageId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
   }
 }

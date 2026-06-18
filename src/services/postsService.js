@@ -42,7 +42,7 @@ export class PostsService {
     return data.publicUrl
   }
 
-  async createPost(authorId, content, file = null, wallOwnerId = null) {
+  async createPost(authorId, content, file = null, wallOwnerId = null, extraFiles = []) {
     let mediaUrl = null
     if (file) mediaUrl = await this.uploadPostImage(file, authorId)
 
@@ -56,6 +56,16 @@ export class PostsService {
       .single()
 
     if (error) return { success: false, error: error.message }
+
+    if (extraFiles?.length) {
+      try {
+        const extraUrls = await Promise.all(extraFiles.map((f, i) => this.uploadPostImage(f, authorId)))
+        await supabase.from('post_media').insert(
+          extraUrls.map((url, i) => ({ post_id: data.id, url, order_num: i + 1 }))
+        )
+      } catch {}
+    }
+
     return { success: true, post: data }
   }
 

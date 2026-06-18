@@ -11,6 +11,10 @@ export class NotificationService {
     container.appendChild(el)
 
     setTimeout(() => this.removeNotification(el), duration)
+
+    if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+      try { new Notification(title, { body: message, icon: '/LVKOSP-JSX/vite.svg' }) } catch {}
+    }
   }
 
   createNotificationElement(title, message, type) {

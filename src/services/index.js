@@ -1,17 +1,21 @@
 import { AuthService } from './authService.js'
 import { BlocksService } from './blocksService.js'
+import { BookmarksService } from './bookmarksService.js'
 import { ChatService } from './chatService.js'
 import { FollowsService } from './followsService.js'
 import { FriendsService } from './friendsService.js'
 import { NotificationService } from './notificationService.js'
 import { NotificationsService } from './notificationsService.js'
 import { PostsService } from './postsService.js'
+import { StoriesService } from './storiesService.js'
 
 export const postsService = new PostsService()
 export const authService = new AuthService()
 export const blocksService = new BlocksService()
+export const bookmarksService = new BookmarksService()
 export const chatService = new ChatService()
 export const followsService = new FollowsService()
 export const friendsService = new FriendsService()
 export const notificationService = new NotificationService()
 export const notificationsService = new NotificationsService()
+export const storiesService = new StoriesService()

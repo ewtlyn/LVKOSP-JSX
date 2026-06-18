@@ -351,4 +351,10 @@ export class AuthService {
       return { success: false }
     }
   }
+
+  async setPrivate(userId, isPrivate) {
+    const { error } = await supabase.from('profiles').update({ is_private: isPrivate }).eq('id', userId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }
 }

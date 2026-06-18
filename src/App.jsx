@@ -264,6 +264,9 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [followLoading, setFollowLoading] = useState(false)
+  const [followModal, setFollowModal] = useState(null) // 'followers' | 'following'
+  const [followModalList, setFollowModalList] = useState([])
+  const [followModalLoading, setFollowModalLoading] = useState(false)
   const bannerFileRef = useRef(null)
   const isMe = Boolean(currentUser?.id) && currentUser.id === profileUser?.id
   const canPost = isMe || isFriendOfUser
@@ -327,6 +330,16 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
     }
   }
 
+  async function openFollowModal(type) {
+    setFollowModal(type)
+    setFollowModalLoading(true)
+    const list = type === 'followers'
+      ? await followsService.getFollowers(profileUser.id)
+      : await followsService.getFollowing(profileUser.id)
+    setFollowModalList(list)
+    setFollowModalLoading(false)
+  }
+
   const hue = (profileUser?.name || '').charCodeAt(0) * 13 % 360
 
   return (
@@ -360,8 +373,8 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>@{profileUser?.username}</div>
             {profileUser?.bio && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5, marginBottom: 8 }}>{profileUser.bio}</div>}
             <div style={{ display: 'flex', gap: 16 }}>
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}><b style={{ color: 'white' }}>{followerCount}</b> подписчиков</span>
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}><b style={{ color: 'white' }}>{followingCount}</b> подписок</span>
+              <button onClick={() => openFollowModal('followers')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.55)', cursor: 'pointer', padding: 0, fontSize: 13 }}><b style={{ color: 'white' }}>{followerCount}</b> подписчиков</button>
+              <button onClick={() => openFollowModal('following')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.55)', cursor: 'pointer', padding: 0, fontSize: 13 }}><b style={{ color: 'white' }}>{followingCount}</b> подписок</button>
             </div>
           </div>
         </div>
@@ -384,6 +397,35 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
             </div>
           : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} onUserClick={onUserClick} />)
       }
+
+      {followModal && (
+        <div onClick={() => setFollowModal(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ width: 'min(380px,100%)', background: 'rgba(16,16,16,0.98)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: 22, maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 14 }}>
+              {followModal === 'followers' ? 'Подписчики' : 'Подписки'}
+            </div>
+            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {followModalLoading
+                ? <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)' }}>Загрузка...</div>
+                : followModalList.length === 0
+                  ? <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Пусто</div>
+                  : followModalList.map(u => (
+                    <div key={u.id} onClick={() => { setFollowModal(null); onUserClick?.(u) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 12, cursor: 'pointer' }}>
+                      <Avatar url={u.avatar_url} name={u.name} size={40} />
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{u.name}</div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{u.username}</div>
+                      </div>
+                    </div>
+                  ))
+              }
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

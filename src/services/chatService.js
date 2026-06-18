@@ -111,22 +111,39 @@ export class ChatService {
 
   async getMessages(chatId, userId) {
     try {
-      const { data, error } = await supabase.from('messages')
+      // пробуем полный запрос с reply_to (нужна колонка reply_to_id в messages)
+      let msgs = null
+      const { data: full, error: fullErr } = await supabase.from('messages')
         .select(`*, sender:profiles(id, username, name, avatar_url), reply_to:messages!messages_reply_to_id_fkey(id, content, type, media_url, sender:profiles(name))`)
         .eq('chat_id', chatId).order('created_at', { ascending: true })
-      if (error) return []
-      const msgs = data || []
-      // load reactions
-      if (msgs.length) {
-        const ids = msgs.map(m => m.id)
-        const { data: rxData } = await supabase.from('message_reactions').select('message_id, user_id, emoji').in('message_id', ids)
-        const rxMap = {}
-        for (const r of (rxData || [])) {
-          if (!rxMap[r.message_id]) rxMap[r.message_id] = []
-          rxMap[r.message_id].push(r)
-        }
-        for (const m of msgs) m._reactions = rxMap[m.id] || []
+
+      if (fullErr) {
+        // fallback без reply_to (если колонка не существует)
+        const { data: simple, error: simpleErr } = await supabase.from('messages')
+          .select(`*, sender:profiles(id, username, name, avatar_url)`)
+          .eq('chat_id', chatId).order('created_at', { ascending: true })
+        if (simpleErr) return []
+        msgs = simple || []
+      } else {
+        msgs = full || []
       }
+
+      // реакции (если таблица не существует — игнорируем)
+      if (msgs.length) {
+        try {
+          const ids = msgs.map(m => m.id)
+          const { data: rxData } = await supabase.from('message_reactions').select('message_id, user_id, emoji').in('message_id', ids)
+          const rxMap = {}
+          for (const r of (rxData || [])) {
+            if (!rxMap[r.message_id]) rxMap[r.message_id] = []
+            rxMap[r.message_id].push(r)
+          }
+          for (const m of msgs) m._reactions = rxMap[m.id] || []
+        } catch {
+          for (const m of msgs) m._reactions = []
+        }
+      }
+
       await this.markAsRead(chatId, userId)
       return msgs
     } catch { return [] }

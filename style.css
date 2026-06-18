@@ -506,7 +506,12 @@ body {
   display: none;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
   width: 100%;
+}
+
+.view > div {
+  min-height: 0;
 }
 
 .view.is-active {

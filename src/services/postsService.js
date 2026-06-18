@@ -22,22 +22,39 @@ export class PostsService {
     return data || []
   }
 
+  async compressImage(file, maxSide = 1080, quality = 0.85) {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        let { width, height } = img
+        if (width > maxSide || height > maxSide) {
+          if (width > height) { height = Math.round(height * maxSide / width); width = maxSide }
+          else { width = Math.round(width * maxSide / height); height = maxSide }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width; canvas.height = height
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+        canvas.toBlob(blob => resolve(blob || file), 'image/jpeg', quality)
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+      img.src = url
+    })
+  }
+
   async uploadPostImage(file, userId) {
     if (!file || !file.type.startsWith('image/')) throw new Error('Not an image')
-    if (file.size > 5 * 1024 * 1024) throw new Error('Max 5MB')
-
-    const ext = file.name.split('.').pop()
-    const path = `${userId}/${Date.now()}.${ext}`
-
+    const uploadFile = await this.compressImage(file, 1080, 0.85)
+    const path = `${userId}/${Date.now()}.jpg`
     const uploadTimeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Бакет post-media не создан в Supabase Storage')), 10000)
+      setTimeout(() => reject(new Error('Бакет post-media не создан в Supabase Storage')), 15000)
     )
     const { error } = await Promise.race([
-      supabase.storage.from('post-media').upload(path, file, { upsert: true }),
+      supabase.storage.from('post-media').upload(path, uploadFile, { upsert: true, contentType: 'image/jpeg' }),
       uploadTimeout,
     ])
     if (error) throw error
-
     const { data } = supabase.storage.from('post-media').getPublicUrl(path)
     return data.publicUrl
   }

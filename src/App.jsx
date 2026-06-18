@@ -162,7 +162,7 @@ function PostCard({ post, currentUser, onShareClick, onUserClick }) {
         )}
       </div>
       {post.content && <div style={{ padding: '0 16px 10px', fontSize: 14, lineHeight: 1.6 }}>{post.content}</div>}
-      {post.media_url && <img src={post.media_url} alt="" onClick={() => window.open(post.media_url,'_blank')} style={{ width: '100%', maxHeight: 360, objectFit: 'cover', display: 'block', cursor: 'zoom-in' }} />}
+      {post.media_url && <img src={post.media_url} alt="" onClick={() => window.open(post.media_url,'_blank')} style={{ width: '100%', maxHeight: 520, objectFit: 'contain', display: 'block', cursor: 'zoom-in', background: 'rgba(0,0,0,0.2)' }} />}
       <div style={{ display: 'flex', gap: 4, padding: '8px 10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
         <button onClick={handleLike} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: liked ? '#ef4444' : 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '6px 10px', borderRadius: 8, fontSize: 13, transition: 'color 0.15s' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'}><path d="M12 21s-7-4.4-9.3-9A5.7 5.7 0 0 1 12 6a5.7 5.7 0 0 1 9.3 6c-2.3 4.6-9.3 9-9.3 9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
@@ -332,7 +332,7 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
   return (
     <div>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ height: localBannerUrl ? 160 : 110, background: localBannerUrl ? undefined : `linear-gradient(135deg, hsl(${hue},45%,22%) 0%, hsl(${hue+100},35%,18%) 100%)`, backgroundImage: localBannerUrl ? `url(${localBannerUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+        <div style={{ height: localBannerUrl ? 160 : 110, background: localBannerUrl ? undefined : `linear-gradient(135deg, hsl(${hue},45%,22%) 0%, hsl(${hue+100},35%,18%) 100%)`, backgroundImage: localBannerUrl ? `url(${localBannerUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center top', position: 'relative' }}>
           {isMe && (
             <>
               <input type="file" ref={bannerFileRef} accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
@@ -627,16 +627,16 @@ export default function App() {
     ;(async () => {
       const [ch, fr, reqs] = await Promise.all([
         chatService.getChats(user.id),
-        friendsService.getFriends(user.id),
-        friendsService.getPendingRequests(user.id),
+        followsService.getMutualFollows(user.id),
+        followsService.getOneWayFollowers(user.id),
       ])
       setChats(ch); setFriends(fr); setPendingRequests(reqs)
     })()
     const t = setInterval(() => authService.updateOnlineStatus(user.id), 60000)
     const poll = setInterval(async () => {
       const [newFriends, newReqs] = await Promise.all([
-        friendsService.getFriends(user.id),
-        friendsService.getPendingRequests(user.id),
+        followsService.getMutualFollows(user.id),
+        followsService.getOneWayFollowers(user.id),
       ])
       setFriends(prev => {
         if (prev.length > 0 && newFriends.length > prev.length) {
@@ -646,7 +646,7 @@ export default function App() {
       })
       setPendingRequests(prev => {
         if (newReqs.length > prev.length) {
-          notificationService.showNotification('Заявки в друзья', 'Новая заявка в друзья!', 'success')
+          notificationService.showNotification('Подписчики', 'На вас подписались!', 'success')
         }
         return newReqs
       })
@@ -757,31 +757,31 @@ export default function App() {
     }
   }
 
-  async function sendFriendRequest(friendId) {
-    const res = await friendsService.sendFriendRequest(user.id, friendId)
+  async function sendFriendRequest(targetId) {
+    const res = await followsService.follow(user.id, targetId)
     if (!res.success) { notificationService.showNotification('Ошибка', res.error, 'error'); return }
-    notificationService.showNotification('Успешно', 'Заявка отправлена!', 'success')
+    notificationService.showNotification('Успешно', 'Вы подписались!', 'success')
+    setFriends(await followsService.getMutualFollows(user.id))
   }
 
   async function acceptRequest(requesterId) {
-    const res = await friendsService.acceptFriendRequest(user.id, requesterId)
+    const res = await followsService.follow(user.id, requesterId)
     if (!res.success) { notificationService.showNotification('Ошибка', res.error, 'error'); return }
-    const [fr, reqs] = await Promise.all([friendsService.getFriends(user.id), friendsService.getPendingRequests(user.id)])
+    const [fr, reqs] = await Promise.all([followsService.getMutualFollows(user.id), followsService.getOneWayFollowers(user.id)])
     setFriends(fr); setPendingRequests(reqs)
-    notificationService.showNotification('Успешно', 'Заявка принята!', 'success')
+    notificationService.showNotification('Ура!', 'Вы теперь друзья!', 'success')
   }
 
   async function declineRequest(requesterId) {
-    const res = await friendsService.declineFriendRequest(user.id, requesterId)
-    if (!res.success) { notificationService.showNotification('Ошибка', res.error, 'error'); return }
-    setPendingRequests(await friendsService.getPendingRequests(user.id))
+    await followsService.removeFollower(user.id, requesterId)
+    setPendingRequests(await followsService.getOneWayFollowers(user.id))
   }
 
   async function removeFriend(friendId) {
-    const res = await friendsService.removeFriend(user.id, friendId)
+    const res = await followsService.unfollow(user.id, friendId)
     if (!res.success) { notificationService.showNotification('Ошибка', res.error, 'error'); return }
-    setFriends(await friendsService.getFriends(user.id))
-    notificationService.showNotification('Успешно', 'Друг удалён', 'success')
+    setFriends(await followsService.getMutualFollows(user.id))
+    notificationService.showNotification('Успешно', 'Вы отписались', 'success')
   }
 
   const isFriend = (uid) => friends.some(f => f.id === uid)
@@ -1018,7 +1018,7 @@ export default function App() {
             <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '0 24px', flexShrink: 0 }}>
               {[
                 { key: 'friends', label: 'Ваши друзья', count: friends.length },
-                { key: 'requests', label: 'Ваши заявки', count: pendingRequests.length },
+                { key: 'requests', label: 'Подписчики', count: pendingRequests.length },
               ].map(tab => (
                 <button key={tab.key} onClick={() => setFriendsTab(tab.key)}
                   style={{ padding: '12px 16px', background: 'transparent', border: 'none', borderBottom: `2px solid ${friendsTab === tab.key ? 'white' : 'transparent'}`, marginBottom: -1, color: friendsTab === tab.key ? 'white' : 'rgba(255,255,255,0.45)', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1050,7 +1050,7 @@ export default function App() {
                           <div className="user-actions">
                             <button className="btn is-outline" onClick={() => { setViewingUser(f); setActiveTab('profile') }}>Профиль</button>
                             <button className="btn" onClick={() => startChatWith(f)}>Написать</button>
-                            <button className="btn is-outline" onClick={() => removeFriend(f.id)}>Удалить</button>
+                            <button className="btn is-outline" onClick={() => removeFriend(f.id)}>Отписаться</button>
                           </div>
                         </div>
                       ))}
@@ -1079,8 +1079,8 @@ export default function App() {
                               <button className="btn is-outline" onClick={() => { setViewingUser(u); setActiveTab('profile') }}>Профиль</button>
                               <button className="btn" onClick={() => startChatWith(u)}>Написать</button>
                               {isFriend(u.id)
-                                ? <button className="btn is-outline" onClick={() => removeFriend(u.id)}>Удалить</button>
-                                : <button className="btn is-outline" onClick={() => sendFriendRequest(u.id)}>Добавить</button>
+                                ? <button className="btn is-outline" onClick={() => removeFriend(u.id)}>Отписаться</button>
+                                : <button className="btn is-outline" onClick={() => sendFriendRequest(u.id)}>Подписаться</button>
                               }
                             </div>
                           </div>
@@ -1103,8 +1103,8 @@ export default function App() {
                           </div>
                         </div>
                         <div className="user-actions">
-                          <button className="btn" onClick={() => acceptRequest(u.id)}>Принять</button>
-                          <button className="btn is-outline" onClick={() => declineRequest(u.id)}>Отклонить</button>
+                          <button className="btn" onClick={() => acceptRequest(u.id)}>Подписаться в ответ</button>
+                          <button className="btn is-outline" onClick={() => declineRequest(u.id)}>Удалить</button>
                         </div>
                       </div>
                     ))
@@ -1139,10 +1139,6 @@ export default function App() {
             </div>
             {viewingUser && (
               <div style={{ padding: '12px 20px 0', display: 'flex', gap: 10, flexShrink: 0 }}>
-                {isFriend(viewingUser.id)
-                  ? <button className="btn is-outline" onClick={() => removeFriend(viewingUser.id)}>Друг ✓ (убрать)</button>
-                  : <button className="btn" onClick={() => sendFriendRequest(viewingUser.id)}>Добавить в друзья</button>
-                }
                 <button className="btn is-outline" onClick={() => startChatWith(viewingUser)}>Написать</button>
               </div>
             )}

@@ -54,6 +54,39 @@ export class FollowsService {
     return (data || []).map(x => x.following).filter(Boolean)
   }
 
+  async getMutualFollows(userId) {
+    const { data: myFollowing } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+    if (!myFollowing?.length) return []
+    const ids = myFollowing.map(f => f.following_id)
+    const { data } = await supabase
+      .from('follows')
+      .select('follower:profiles!follows_follower_id_fkey(id, username, name, avatar_url, bio)')
+      .eq('following_id', userId)
+      .in('follower_id', ids)
+    return (data || []).map(x => x.follower).filter(Boolean)
+  }
+
+  async getOneWayFollowers(userId) {
+    const { data: myFollowing } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+    const ids = (myFollowing || []).map(f => f.following_id)
+    let q = supabase
+      .from('follows')
+      .select('follower:profiles!follows_follower_id_fkey(id, username, name, avatar_url, bio)')
+      .eq('following_id', userId)
+    if (ids.length) q = q.not('follower_id', 'in', `(${ids.join(',')})`)
+    const { data } = await q
+    return (data || []).map(x => x.follower).filter(Boolean)
+  }
+
+  async removeFollower(myId, followerId) {
+    const { error } = await supabase.from('follows')
+      .delete()
+      .eq('follower_id', followerId)
+      .eq('following_id', myId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }
+
   async getFollowingPosts(userId, limit = 50) {
     const { data: fData } = await supabase
       .from('follows')

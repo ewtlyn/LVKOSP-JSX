@@ -10,6 +10,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
   line-height: 1.5;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -17,6 +18,7 @@ body {
   display: grid;
   grid-template-columns: 320px 1fr;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   background: #0b0b0b;
   position: relative;
@@ -46,6 +48,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   position: relative;
 }
@@ -498,6 +501,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   background: #0b0b0b;
   overflow: hidden;
 }
@@ -1242,6 +1246,7 @@ body {
     width: 85%;
     max-width: 320px;
     height: 100vh;
+    height: 100dvh;
     z-index: 999;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
@@ -1396,6 +1401,7 @@ html {
   margin: 0;
   padding: 0;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: #0b0b0b;
 }
@@ -1516,4 +1522,32 @@ html {
 @media (max-width: 768px) {
   .mobile-menu-btn { display: flex; position: fixed; top: 10px; left: 10px; z-index: 1000; background: rgba(11,11,11,0.85); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.1); }
   .sidebar-overlay { display: block; }
+}
+
+/* Android keyboard / safe area */
+@supports (height: 100dvh) {
+  body, #root, .app, .sidebar, .main {
+    height: 100dvh;
+  }
+  @media (max-width: 768px) {
+    .sidebar { height: 100dvh; }
+  }
+}
+
+/* iOS safe area insets */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .chatComposer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Prevent text size adjustment on orientation change (Android) */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Prevent double-tap zoom on buttons/labels */
+button, label, a {
+  touch-action: manipulation;
 }

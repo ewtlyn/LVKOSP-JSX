@@ -1904,8 +1904,7 @@ function ShareModal({ post, friends, onClose, onSend }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.75)",
-        backdropFilter: "blur(8px)",
+        background: "rgba(0,0,0,0.85)",
         zIndex: 9000,
         display: "flex",
         alignItems: "center",
@@ -3139,7 +3138,7 @@ export default function App() {
 
           <nav className="tabs">
             <button className={`tab ${activeTab === "chats" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("chats"); setSidebarOpen(false) }}>
+              onClick={() => { setActiveTab("chats"); setActiveChatId(null); setSidebarOpen(false) }}>
               <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7.5 18.5H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8.5a3 3 0 0 1-3 3h-5.2l-3.6 2.6a.9.9 0 0 1-1.4-.7v-1.9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg></span>
               <span className="tab__label">Чаты</span>
               {totalUnread > 0 && <span className="notification-badge">{totalUnread > 99 ? "99+" : totalUnread}</span>}

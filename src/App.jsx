@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabaseClient'
-import { authService, chatService, friendsService, notificationService, postsService } from './services'
+import { authService, chatService, followsService, friendsService, notificationService, postsService } from './services'
 
 // ─── utils ────────────────────────────────────────────────────────────────────
 const safeText = (s) => String(s ?? '')
@@ -260,11 +260,25 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
   const [loading, setLoading] = useState(true)
   const [bannerUploading, setBannerUploading] = useState(false)
   const [localBannerUrl, setLocalBannerUrl] = useState(profileUser?.banner_url || '')
+  const [following, setFollowing] = useState(null)
+  const [followerCount, setFollowerCount] = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
+  const [followLoading, setFollowLoading] = useState(false)
   const bannerFileRef = useRef(null)
   const isMe = Boolean(currentUser?.id) && currentUser.id === profileUser?.id
   const canPost = isMe || isFriendOfUser
 
   useEffect(() => { setLocalBannerUrl(profileUser?.banner_url || '') }, [profileUser?.banner_url])
+
+  useEffect(() => {
+    if (!profileUser?.id || !currentUser?.id) return
+    followsService.getCounts(profileUser.id).then(c => {
+      setFollowerCount(c.followers); setFollowingCount(c.following)
+    })
+    if (!isMe) {
+      followsService.isFollowing(currentUser.id, profileUser.id).then(setFollowing)
+    }
+  }, [profileUser?.id, currentUser?.id, isMe])
 
   const loadPosts = useCallback(async () => {
     if (!profileUser?.id) return
@@ -279,6 +293,23 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
   }, [profileUser?.id])
 
   useEffect(() => { loadPosts() }, [loadPosts])
+
+  async function handleFollow() {
+    if (followLoading || following === null) return
+    setFollowLoading(true)
+    const prev = following
+    setFollowing(!prev)
+    setFollowerCount(c => prev ? c - 1 : c + 1)
+    const res = prev
+      ? await followsService.unfollow(currentUser.id, profileUser.id)
+      : await followsService.follow(currentUser.id, profileUser.id)
+    if (!res.success) {
+      setFollowing(prev)
+      setFollowerCount(c => prev ? c + 1 : c - 1)
+      notificationService.showNotification('Ошибка', res.error, 'error')
+    }
+    setFollowLoading(false)
+  }
 
   async function handleBannerUpload(e) {
     const file = e.target.files?.[0]
@@ -306,20 +337,32 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
             <>
               <input type="file" ref={bannerFileRef} accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
               <button type="button" onClick={() => bannerFileRef.current?.click()} disabled={bannerUploading}
-                style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(4px)' }}>
+                style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                 {bannerUploading ? '...' : 'Сменить фон'}
               </button>
             </>
           )}
         </div>
         <div style={{ padding: '0 18px 16px', position: 'relative', zIndex: 1 }}>
-          <div style={{ marginTop: -20 }}>
-            <Avatar url={profileUser?.avatar_url} name={profileUser?.name} size={64} style={{ border: '3px solid #0b0b0b' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ marginTop: -20 }}>
+              <Avatar url={profileUser?.avatar_url} name={profileUser?.name} size={64} style={{ border: '3px solid #0b0b0b' }} />
+            </div>
+            {!isMe && currentUser?.id && following !== null && (
+              <button onClick={handleFollow} disabled={followLoading}
+                style={{ background: following ? 'transparent' : 'rgba(255,255,255,0.13)', border: `1px solid ${following ? 'rgba(255,255,255,0.2)' : 'transparent'}`, color: 'white', borderRadius: 10, padding: '7px 18px', cursor: 'pointer', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
+                {following ? 'Отписаться' : 'Подписаться'}
+              </button>
+            )}
           </div>
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 800, fontSize: 17 }}>{profileUser?.name}</div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 4 }}>@{profileUser?.username}</div>
-            {profileUser?.bio && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 }}>{profileUser.bio}</div>}
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>@{profileUser?.username}</div>
+            {profileUser?.bio && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5, marginBottom: 8 }}>{profileUser.bio}</div>}
+            <div style={{ display: 'flex', gap: 16 }}>
+              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}><b style={{ color: 'white' }}>{followerCount}</b> подписчиков</span>
+              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}><b style={{ color: 'white' }}>{followingCount}</b> подписок</span>
+            </div>
           </div>
         </div>
       </div>
@@ -347,30 +390,44 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
 
 // ─── GlobalFeed ───────────────────────────────────────────────────────────────
 function GlobalFeed({ currentUser, onShareClick, onUserClick }) {
+  const [tab, setTab] = useState('all')
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
 
   const loadPosts = useCallback(async () => {
     setLoading(true)
-    const all = await postsService.getAllPosts()
+    let all
+    if (tab === 'following' && currentUser?.id) {
+      all = await followsService.getFollowingPosts(currentUser.id)
+    } else {
+      all = await postsService.getAllPosts()
+    }
     const enriched = await Promise.all(all.map(async p => {
       const count = await postsService.getLikeCount(p.id)
       return { ...p, _likeCount: count }
     }))
     setPosts(enriched)
     setLoading(false)
-  }, [])
+  }, [tab, currentUser?.id])
 
   useEffect(() => { loadPosts() }, [loadPosts])
 
   return (
     <div>
-      {currentUser?.id && <CreatePost user={currentUser} onCreated={loadPosts} />}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+        {[['all', 'Все'], ['following', 'Подписки']].map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            style={{ padding: '6px 16px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, background: tab === key ? 'rgba(255,255,255,0.13)' : 'transparent', color: tab === key ? 'white' : 'rgba(255,255,255,0.4)' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'all' && currentUser?.id && <CreatePost user={currentUser} onCreated={loadPosts} />}
       {loading
         ? <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Загрузка...</div>
         : posts.length === 0
           ? <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14, border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 14 }}>
-              Постов пока нет. Поделитесь чем-нибудь!
+              {tab === 'following' ? 'Подпишитесь на кого-нибудь, чтобы видеть их посты' : 'Постов пока нет. Поделитесь чем-нибудь!'}
             </div>
           : posts.map(p => <PostCard key={p.id} post={p} currentUser={currentUser} onShareClick={onShareClick} onUserClick={onUserClick} />)
       }
@@ -449,7 +506,7 @@ function MessageBubble({ msg, isMe, searchQuery, onEdit, onDelete, onUserClick }
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ position: 'relative' }}>
       {hover && isMe && !editing && (
-        <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'rgba(18,18,18,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: 4, display: 'flex', gap: 2, zIndex: 50, backdropFilter: 'blur(8px)', whiteSpace: 'nowrap' }}>
+        <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'rgba(18,18,18,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: 4, display: 'flex', gap: 2, zIndex: 50, whiteSpace: 'nowrap' }}>
           <button onClick={() => { setEditing(true); setEditText(msg.content || '') }} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.75)', padding: '5px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 12 }}>✏️ Изменить</button>
           <button onClick={() => onDelete(msg.id)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.85)', padding: '5px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 12 }}>🗑 Удалить</button>
         </div>
@@ -873,13 +930,13 @@ export default function App() {
         </aside>
 
         {/* ════ MAIN ════ */}
-        <main className="main">
+        <main className="main" onClick={() => sidebarOpen && setSidebarOpen(false)}>
 
           {/* ── ЧАТЫ ── */}
           <section className={`view ${activeTab === 'chats' ? 'is-active' : ''}`}>
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <header className="chatHeader">
-                <div className="chatHeader__left">
+                <div className="chatHeader__left" onClick={() => activeChat && openProfile({ id: activeChat.userId, name: activeChat.name, username: activeChat.username, avatar_url: activeChat.avatarUrl })} style={{ cursor: activeChat ? 'pointer' : undefined }}>
                   {activeChat && (
                     <div style={{ position: 'relative' }}>
                       <Avatar url={activeChat.avatarUrl} name={activeChat.name} size={44} />

@@ -94,6 +94,27 @@ export class PostsService {
     return data || []
   }
 
+  async repost(userId, originalPostId) {
+    const { data, error } = await supabase.from('posts')
+      .insert({ author_id: userId, repost_of_id: originalPostId, content: '', media_url: null })
+      .select().single()
+    if (error) return { success: false, error: error.message }
+    return { success: true, post: data }
+  }
+
+  async getRepostOf(postId) {
+    const { data } = await supabase.from('posts')
+      .select(`id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`)
+      .eq('id', postId).maybeSingle()
+    return data || null
+  }
+
+  async deletePost(postId) {
+    const { error } = await supabase.from('posts').delete().eq('id', postId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }
+
   async addComment(postId, userId, content) {
     const text = content?.trim?.()
     if (!text) return { success: false, error: 'Empty comment' }

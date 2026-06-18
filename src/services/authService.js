@@ -327,6 +327,22 @@ export class AuthService {
     }
   }
 
+  async changePassword(userId, oldPassword, newPassword) {
+    try {
+      if (!newPassword || newPassword.length < 6) return { success: false, error: 'Новый пароль минимум 6 символов' }
+      const { data: profile } = await supabase.from('profiles').select('password_hash').eq('id', userId).maybeSingle()
+      if (!profile) return { success: false, error: 'Профиль не найден' }
+      const oldHash = await hashPassword(oldPassword)
+      if (profile.password_hash !== oldHash) return { success: false, error: 'Неверный текущий пароль' }
+      const newHash = await hashPassword(newPassword)
+      const { error } = await supabase.from('profiles').update({ password_hash: newHash }).eq('id', userId)
+      if (error) return { success: false, error: error.message }
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e?.message || 'Ошибка смены пароля' }
+    }
+  }
+
   async updateOnlineStatus(userId) {
     try {
       await supabase.from('profiles').update({ last_seen: new Date().toISOString(), status: 'online' }).eq('id', userId)

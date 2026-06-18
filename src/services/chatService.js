@@ -82,12 +82,14 @@ export class ChatService {
     return { success: true, message: data }
   }
 
-  async sendMessage(chatId, senderId, content) {
+  async sendMessage(chatId, senderId, content, replyToId = null) {
     try {
-      const { data, error } = await supabase.from('messages').insert({
+      const row = {
         chat_id: chatId, sender_id: senderId,
         content: content.trim(), created_at: new Date().toISOString(), read: false,
-      }).select().single()
+      }
+      if (replyToId) row.reply_to_id = replyToId
+      const { data, error } = await supabase.from('messages').insert(row).select().single()
       if (error) return { success: false, error: error.message }
       await supabase.from('chats').update({
         updated_at: new Date().toISOString(),
@@ -102,12 +104,36 @@ export class ChatService {
   async getMessages(chatId, userId) {
     try {
       const { data, error } = await supabase.from('messages')
-        .select(`*, sender:profiles ( id, username, name, avatar_url )`)
+        .select(`*, sender:profiles(id, username, name, avatar_url), reply_to:messages!messages_reply_to_id_fkey(id, content, type, media_url, sender:profiles(name))`)
         .eq('chat_id', chatId).order('created_at', { ascending: true })
       if (error) return []
+      const msgs = data || []
+      // load reactions
+      if (msgs.length) {
+        const ids = msgs.map(m => m.id)
+        const { data: rxData } = await supabase.from('message_reactions').select('message_id, user_id, emoji').in('message_id', ids)
+        const rxMap = {}
+        for (const r of (rxData || [])) {
+          if (!rxMap[r.message_id]) rxMap[r.message_id] = []
+          rxMap[r.message_id].push(r)
+        }
+        for (const m of msgs) m._reactions = rxMap[m.id] || []
+      }
       await this.markAsRead(chatId, userId)
-      return data || []
+      return msgs
     } catch { return [] }
+  }
+
+  async toggleReaction(messageId, userId, emoji) {
+    const { data: existing } = await supabase.from('message_reactions')
+      .select('id').eq('message_id', messageId).eq('user_id', userId).eq('emoji', emoji).maybeSingle()
+    if (existing) {
+      await supabase.from('message_reactions').delete().eq('id', existing.id)
+      return { added: false }
+    } else {
+      await supabase.from('message_reactions').insert({ message_id: messageId, user_id: userId, emoji })
+      return { added: true }
+    }
   }
 
   async markAsRead(chatId, userId) {

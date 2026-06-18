@@ -1,9 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-// В dev режиме запросы идут через Vite proxy (localhost → Supabase)
-// Это обходит VPN/расширения которые блокируют браузерные запросы к supabase.co
 const SUPABASE_URL = import.meta.env.DEV
   ? `${window.location.origin}/supabase`
   : import.meta.env.VITE_SUPABASE_URL

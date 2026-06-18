@@ -42,7 +42,12 @@ export class ChatService {
           status, unreadCount: 0,
         })
       }
-      return chats.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime))
+      const seen = new Map()
+      for (const chat of chats) {
+        const ex = seen.get(chat.userId)
+        if (!ex || new Date(chat.lastMessageTime) > new Date(ex.lastMessageTime)) seen.set(chat.userId, chat)
+      }
+      return [...seen.values()].sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime))
     } catch { return [] }
   }
 
@@ -118,7 +123,7 @@ export class ChatService {
     if (existing?.length) {
       const counts = {}
       existing.forEach(x => (counts[x.chat_id] = (counts[x.chat_id] || 0) + 1))
-      const common = Object.entries(counts).find(([, c]) => c === 2)
+      const common = Object.entries(counts).find(([, c]) => c >= 2)
       if (common) return common[0]
     }
     const { data: newChat, error } = await supabase.from('chats')
@@ -153,5 +158,17 @@ export class ChatService {
 
   unsubscribeFromAll() {
     for (const [chatId] of this.subscriptions.entries()) this.unsubscribeFromMessages(chatId)
+  }
+
+  async deleteChat(chatId) {
+    try {
+      this.unsubscribeFromMessages(chatId)
+      await supabase.from('messages').delete().eq('chat_id', chatId)
+      await supabase.from('chat_members').delete().eq('chat_id', chatId)
+      await supabase.from('chats').delete().eq('id', chatId)
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e?.message || 'Ошибка удаления' }
+    }
   }
 }

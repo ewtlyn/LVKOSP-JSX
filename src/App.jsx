@@ -268,10 +268,14 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
   const [followModalList, setFollowModalList] = useState([])
   const [followModalLoading, setFollowModalLoading] = useState(false)
   const bannerFileRef = useRef(null)
+  const avatarFileRef = useRef(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [localAvatarUrl, setLocalAvatarUrl] = useState(profileUser?.avatar_url || '')
   const isMe = Boolean(currentUser?.id) && currentUser.id === profileUser?.id
   const canPost = isMe || isFriendOfUser
 
   useEffect(() => { setLocalBannerUrl(profileUser?.banner_url || '') }, [profileUser?.banner_url])
+  useEffect(() => { setLocalAvatarUrl(profileUser?.avatar_url || '') }, [profileUser?.avatar_url])
 
   useEffect(() => {
     if (!profileUser?.id || !currentUser?.id) return
@@ -312,6 +316,21 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
       notificationService.showNotification('Ошибка', res.error, 'error')
     }
     setFollowLoading(false)
+  }
+
+  async function handleAvatarUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setAvatarUploading(true)
+    const res = await authService.updateAvatar(currentUser.id, file)
+    setAvatarUploading(false)
+    if (!res.success) {
+      notificationService.showNotification('Ошибка', res.error, 'error')
+    } else {
+      setLocalAvatarUrl(res.avatar_url)
+      notificationService.showNotification('Готово!', 'Аватарка обновлена', 'success')
+    }
   }
 
   async function handleBannerUpload(e) {
@@ -358,8 +377,19 @@ function ProfileWall({ profileUser, currentUser, isFriendOfUser, onShareClick, o
         </div>
         <div style={{ padding: '0 18px 16px', position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-            <div style={{ marginTop: -20 }}>
-              <Avatar url={profileUser?.avatar_url} name={profileUser?.name} size={64} style={{ border: '3px solid #0b0b0b' }} />
+            <div style={{ marginTop: -20, position: 'relative', width: 64 }}>
+              {isMe && (
+                <input type="file" ref={avatarFileRef} accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+              )}
+              <div onClick={isMe ? () => avatarFileRef.current?.click() : undefined}
+                style={{ cursor: isMe ? 'pointer' : undefined, position: 'relative', display: 'inline-block' }}>
+                <Avatar url={localAvatarUrl} name={profileUser?.name} size={64} style={{ border: '3px solid #0b0b0b' }} />
+                {isMe && (
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 20, height: 20, borderRadius: '50%', background: 'rgba(0,0,0,0.7)', border: '1.5px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>
+                    {avatarUploading ? '…' : '✎'}
+                  </div>
+                )}
+              </div>
             </div>
             {!isMe && currentUser?.id && following !== null && (
               <button onClick={handleFollow} disabled={followLoading}
@@ -781,6 +811,14 @@ export default function App() {
     else notificationService.showNotification('Ошибка', 'Не удалось удалить сообщение', 'error')
   }
 
+  async function handleDeleteChat(chatId) {
+    if (!window.confirm('Удалить переписку? Все сообщения исчезнут у обоих участников.')) return
+    const res = await chatService.deleteChat(chatId)
+    if (!res.success) { notificationService.showNotification('Ошибка', res.error, 'error'); return }
+    setChats(prev => prev.filter(c => c.id !== chatId))
+    if (activeChatId === chatId) { setActiveChatId(null); setMessages([]) }
+  }
+
   function openProfile(userData) {
     if (!userData?.id) return
     if (userData.id === user?.id) setViewingUser(null)
@@ -1005,10 +1043,16 @@ export default function App() {
                 </div>
                 <div className="chatHeader__right">
                   {activeChat && (
-                    <button className="iconBtn" title="Поиск по сообщениям" style={{ color: msgSearchOpen ? 'white' : undefined }}
-                      onClick={() => { setMsgSearchOpen(v => !v); setMsgSearchQuery('') }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M10.5 18.5a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="1.6" /><path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-                    </button>
+                    <>
+                      <button className="iconBtn" title="Поиск по сообщениям" style={{ color: msgSearchOpen ? 'white' : undefined }}
+                        onClick={() => { setMsgSearchOpen(v => !v); setMsgSearchQuery('') }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M10.5 18.5a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="1.6" /><path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+                      </button>
+                      <button className="iconBtn" title="Удалить переписку" style={{ color: 'rgba(255,80,80,0.7)' }}
+                        onClick={() => handleDeleteChat(activeChat.id)}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+                      </button>
+                    </>
                   )}
                 </div>
               </header>

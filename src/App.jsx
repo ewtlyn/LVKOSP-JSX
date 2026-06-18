@@ -233,9 +233,8 @@ function PostCard({
 
   useEffect(() => {
     if (post.id && post.media_url) {
-      supabase.from('post_media').select('url, order_num').eq('post_id', post.id).order('order_num')
-        .then(({ data }) => { if (data?.length) setExtraMedia(data.map(d => d.url)) })
-        .catch(() => {})
+      postsService.getExtraMedia(post.id)
+        .then(urls => { if (urls.length) setExtraMedia(urls) })
     }
   }, [post.id]);
 
@@ -2774,10 +2773,9 @@ export default function App() {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         const file = new File([blob], `voice_${Date.now()}.webm`, { type: 'audio/webm' })
         try {
-          const url = await chatService.uploadChatImage(file, activeChatId, user.id)
-          const { data } = await supabase.from('messages').insert({ chat_id: activeChatId, sender_id: user.id, type: 'voice', content: '', media_url: url, created_at: new Date().toISOString(), read: false }).select().single()
-          if (data) {
-            setMessages(prev => prev.find(m => m.id === data.id) ? prev : [...prev, { ...data, sender: { id: user.id, name: user.name, avatar_url: user.avatar_url || '' } }])
+          const res = await chatService.sendVoice(activeChatId, user.id, file)
+          if (res.success) {
+            setMessages(prev => prev.find(m => m.id === res.message.id) ? prev : [...prev, { ...res.message, sender: { id: user.id, name: user.name, avatar_url: user.avatar_url || '' } }])
             scrollToBottom()
           }
         } catch (e) {
@@ -2819,11 +2817,8 @@ export default function App() {
   }
 
   async function handleEditMessage(msgId, newContent) {
-    const { error } = await supabase
-      .from("messages")
-      .update({ content: newContent, edited: true })
-      .eq("id", msgId);
-    if (!error)
+    const res = await chatService.editMessage(msgId, newContent);
+    if (res.success)
       setMessages((prev) =>
         prev.map((m) =>
           m.id === msgId ? { ...m, content: newContent, edited: true } : m,
@@ -2838,14 +2833,9 @@ export default function App() {
   }
 
   async function handleDeleteMessage(msgId) {
-    const { error } = await supabase.from("messages").delete().eq("id", msgId);
-    if (!error) setMessages((prev) => prev.filter((m) => m.id !== msgId));
-    else
-      notificationService.showNotification(
-        "Ошибка",
-        "Не удалось удалить сообщение",
-        "error",
-      );
+    const res = await chatService.deleteMessage(msgId);
+    if (res.success) setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    else notificationService.showNotification("Ошибка", "Не удалось удалить сообщение", "error");
   }
 
   async function handleDeleteChat(chatId) {

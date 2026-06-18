@@ -10,10 +10,17 @@ export class ChatService {
     try {
       const { data: chatMemberships, error } = await supabase
         .from('chat_members')
-        .select(`chat_id, archived, chats ( id, created_at, updated_at, last_message_content, last_message_at )`)
+        .select(`chat_id, chats ( id, created_at, updated_at, last_message_content, last_message_at )`)
         .eq('user_id', userId)
 
       if (error || !chatMemberships?.length) return []
+
+      let archivedMap = {}
+      try {
+        const { data: archData } = await supabase.from('chat_members')
+          .select('chat_id, archived').eq('user_id', userId)
+        if (archData) archData.forEach(r => { archivedMap[r.chat_id] = r.archived || false })
+      } catch {}
 
       const chats = []
       for (const membership of chatMemberships) {
@@ -40,7 +47,7 @@ export class ChatService {
           lastMessageTime: chat.last_message_at || chat.created_at,
           userId: otherMember.id,
           status, unreadCount: 0,
-          archived: membership.archived || false,
+          archived: archivedMap[chat.id] || false,
         })
       }
       const seen = new Map()
@@ -218,10 +225,25 @@ export class ChatService {
   }
 
   async getPinnedMessage(chatId) {
-    const { data } = await supabase.from('chats')
-      .select('pinned_message_id, pinned:messages!chats_pinned_message_id_fkey(id, content, type, sender:profiles(name))')
-      .eq('id', chatId).single()
-    return data?.pinned || null
+    try {
+      const { data } = await supabase.from('chats')
+        .select('pinned_message_id, pinned:messages!chats_pinned_message_id_fkey(id, content, type, sender:profiles(name))')
+        .eq('id', chatId).single()
+      return data?.pinned || null
+    } catch { return null }
+  }
+
+  async sendVoice(chatId, senderId, file) {
+    try {
+      const url = await this.uploadChatImage(file, chatId, senderId)
+      const { data, error } = await supabase.from('messages').insert({
+        chat_id: chatId, sender_id: senderId, type: 'voice',
+        content: '', media_url: url, created_at: new Date().toISOString(), read: false,
+      }).select().single()
+      if (error) return { success: false, error: error.message }
+      await supabase.from('chats').update({ updated_at: new Date().toISOString(), last_message_content: '🎙 Голосовое', last_message_at: new Date().toISOString() }).eq('id', chatId)
+      return { success: true, message: data }
+    } catch (e) { return { success: false, error: e?.message } }
   }
 
   async editMessage(messageId, content) {

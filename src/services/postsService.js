@@ -119,6 +119,14 @@ export class PostsService {
     return data || null
   }
 
+  async getExtraMedia(postId) {
+    try {
+      const { data } = await supabase.from('post_media')
+        .select('url, order_num').eq('post_id', postId).order('order_num')
+      return (data || []).map(d => d.url)
+    } catch { return [] }
+  }
+
   async deletePost(postId) {
     const { error } = await supabase.from('posts').delete().eq('id', postId)
     if (error) return { success: false, error: error.message }

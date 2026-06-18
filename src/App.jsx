@@ -3029,6 +3029,18 @@ export default function App() {
 
   const profileUser = viewingUser || user;
 
+  useEffect(() => {
+    if (activeTab === "chats") {
+      setChatSearch("");
+      if (user?.id && chats.length === 0) {
+        chatService.getChats(user.id).then(setChats).catch(() => {});
+      }
+    }
+    if (activeTab === "friends") {
+      setFriendsSearch("");
+    }
+  }, [activeTab, user?.id, chats.length]);
+
   if (!authChecked)
     return (
       <div

@@ -2394,6 +2394,7 @@ export default function App() {
 
   // чаты
   const [chats, setChats] = useState([]);
+  const chatsRef = useRef(chats);
   const [showArchived, setShowArchived] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -2407,13 +2408,67 @@ export default function App() {
   const [recordingTime, setRecordingTime] = useState(0);
   const recordTimerRef = useRef(null);
 
+  useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`chat-list:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        async (payload) => {
+          const msg = payload.new;
+          if (msg.sender_id === user.id) return;
+          const currentChats = chatsRef.current;
+          const chatExists = currentChats.some((c) => c.id === msg.chat_id);
+          const nextLastMessage =
+            msg.type === 'image'
+              ? '📷 Фото'
+              : msg.type === 'voice'
+              ? '🎤 Голос'
+              : msg.content || 'Новое сообщение';
+          if (chatExists) {
+            setChats((prev) =>
+              [...prev]
+                .map((c) =>
+                  c.id === msg.chat_id
+                    ? {
+                        ...c,
+                        lastMessage: nextLastMessage,
+                        lastMessageTime: msg.created_at,
+                      }
+                    : c,
+                )
+                .sort(
+                  (a, b) =>
+                    new Date(b.lastMessageTime).getTime() -
+                    new Date(a.lastMessageTime).getTime(),
+                ),
+            );
+          } else {
+            const updated = await chatService.getChats(user.id);
+            setChats(updated);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
   // поиск по сообщениям
   const [msgSearchOpen, setMsgSearchOpen] = useState(false);
   const [msgSearchQuery, setMsgSearchQuery] = useState("");
 
   // друзья
   const [friends, setFriends] = useState([]);
-  const [search, setSearch] = useState("");
+  const [chatSearch, setChatSearch] = useState("");
+  const [friendsSearch, setFriendsSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
 
   // профиль
@@ -2596,7 +2651,7 @@ export default function App() {
   // поиск пользователей
   useEffect(() => {
     if (!user?.id || activeTab !== "friends") return;
-    const q = search.trim();
+    const q = friendsSearch.trim();
     let cancelled = false;
     (async () => {
       if (q.length < 2) {
@@ -2609,7 +2664,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [search, activeTab, user?.id]);
+  }, [friendsSearch, activeTab, user?.id]);
 
   function scrollToBottom() {
     setTimeout(() => {
@@ -2962,7 +3017,7 @@ export default function App() {
   }
 
   const filteredChats = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = chatSearch.trim().toLowerCase();
     const base = chats.filter(c => showArchived ? c.archived : !c.archived)
     if (!q || activeTab !== "chats") return base;
     return base.filter(
@@ -2970,7 +3025,7 @@ export default function App() {
         c.name.toLowerCase().includes(q) ||
         (c.lastMessage || "").toLowerCase().includes(q),
     );
-  }, [chats, search, activeTab, showArchived]);
+  }, [chats, chatSearch, activeTab, showArchived]);
 
   const profileUser = viewingUser || user;
 
@@ -3090,8 +3145,11 @@ export default function App() {
               type="search"
               placeholder="Поиск..."
               autoComplete="off"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={activeTab === "friends" ? friendsSearch : chatSearch}
+              onChange={(e) => {
+                if (activeTab === "friends") setFriendsSearch(e.target.value);
+                else setChatSearch(e.target.value);
+              }}
             />
           </div>
 
@@ -3816,7 +3874,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {friends.length === 0 && search.trim().length < 2 && (
+                  {friends.length === 0 && friendsSearch.trim().length < 2 && (
                     <div
                       style={{
                         textAlign: "center",
@@ -3829,7 +3887,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {search.trim().length >= 2 && (
+                  {friendsSearch.trim().length >= 2 && (
                     <>
                       <div
                         style={{

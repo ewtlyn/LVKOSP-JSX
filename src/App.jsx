@@ -2526,9 +2526,12 @@ export default function App() {
                     new Date(a.lastMessageTime).getTime(),
                 ),
             );
+            setUnreadCounts(prev => ({ ...prev, [msg.chat_id]: (prev[msg.chat_id] || 0) + 1 }));
           } else {
             const updated = await chatService.getChats(user.id);
             setChats(updated);
+            // счётчик для нового чата — добавляем после загрузки
+            setUnreadCounts(prev => ({ ...prev, [msg.chat_id]: (prev[msg.chat_id] || 0) + 1 }));
           }
         },
       )
@@ -2593,7 +2596,8 @@ export default function App() {
     user?.id,
     user?.name,
   );
-  const { counts: unreadCounts, reset: resetUnread } = useUnread(user?.id);
+  const [unreadCounts, setUnreadCounts] = useState({});
+  const resetUnread = useCallback((chatId) => setUnreadCounts(prev => ({ ...prev, [chatId]: 0 })), []);
 
   const activeChat = useMemo(
     () => chats.find((c) => c.id === activeChatId) || null,

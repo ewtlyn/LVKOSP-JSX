@@ -2532,6 +2532,14 @@ export default function App() {
           }
         },
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_members', filter: `user_id=eq.${user.id}` },
+        async () => {
+          const updated = await chatService.getChats(user.id);
+          setChats(updated);
+        },
+      )
       .subscribe();
 
     return () => {
@@ -2592,8 +2600,8 @@ export default function App() {
     [chats, activeChatId],
   );
   const totalUnread = useMemo(
-    () => Object.values(unreadCounts).reduce((a, b) => a + b, 0),
-    [unreadCounts],
+    () => chats.reduce((a, c) => a + (unreadCounts[c.id] || 0), 0),
+    [unreadCounts, chats],
   );
 
   const displayMessages = useMemo(() => {

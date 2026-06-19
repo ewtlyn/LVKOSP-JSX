@@ -18,6 +18,7 @@ import {
   postsService,
   storiesService,
 } from "./services";
+import { pushService } from "./services/pushService";
 
 const safeText = (s) => String(s ?? "");
 
@@ -219,6 +220,7 @@ function PostCard({
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentCount, setCommentCount] = useState(post._commentCount ?? null);
   const [commentText, setCommentText] = useState("");
   const [commentLoading, setCommentLoading] = useState(false);
   const [deleted, setDeleted] = useState(false);
@@ -288,6 +290,7 @@ function PostCard({
     if (!commentsLoaded) {
       const data = await postsService.getComments(post.id);
       setComments(data);
+      setCommentCount(data.length);
       setCommentsLoaded(true);
     }
     setCommentsOpen((v) => !v);
@@ -307,6 +310,7 @@ function PostCard({
       setCommentText("");
       const data = await postsService.getComments(post.id);
       setComments(data);
+      setCommentCount(data.length);
     }
     setCommentLoading(false);
   }
@@ -603,7 +607,7 @@ function PostCard({
               strokeLinejoin="round"
             />
           </svg>
-          {commentsLoaded ? comments.length : ""}
+          {commentCount !== null ? commentCount : ""}
         </button>
         {currentUser && (
           <button onClick={handleSave} title={saved ? 'Убрать из закладок' : 'В закладки'}
@@ -1871,7 +1875,7 @@ function GlobalFeed({
     const off = reset ? 0 : offset
     let batch;
     if (tab === "following" && currentUser?.id) {
-      batch = await followsService.getFollowingPosts(currentUser.id);
+      batch = await followsService.getFollowingPosts(currentUser.id, PAGE, off);
     } else {
       batch = await postsService.getAllPosts(PAGE, off);
     }
@@ -2623,6 +2627,7 @@ export default function App() {
       if (res.success) {
         setUser(res.user);
         setAuthModalOpen(false);
+        pushService.subscribe(res.user.id);
       } else {
         setUser(null);
         setAuthModalOpen(true);
@@ -2646,6 +2651,23 @@ export default function App() {
       window.removeEventListener("auth:invalidated", onInvalidated);
     };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const setOnline = () => supabase.from('profiles').update({ status: 'online', last_seen: new Date().toISOString() }).eq('id', user.id)
+    const setOffline = () => supabase.from('profiles').update({ status: 'offline', last_seen: new Date().toISOString() }).eq('id', user.id)
+    setOnline()
+    const heartbeat = setInterval(() => supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id), 60_000)
+    const onHide = () => { if (document.visibilityState === 'hidden') setOffline(); else setOnline() }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('beforeunload', setOffline)
+    return () => {
+      clearInterval(heartbeat)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('beforeunload', setOffline)
+      setOffline()
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -2721,6 +2743,7 @@ export default function App() {
       setMessages(msgs);
       setPinnedMsg(pinned);
       resetUnread(activeChatId);
+      chatService.markAsRead(activeChatId, user.id);
       scrollToBottom();
     })();
 
@@ -2730,7 +2753,7 @@ export default function App() {
         setMessages((prev) =>
           prev.find((m) => m.id === newMsg.id) ? prev : [...prev, newMsg],
         );
-        if (newMsg.sender_id !== user.id) resetUnread(activeChatId);
+        if (newMsg.sender_id !== user.id) { resetUnread(activeChatId); chatService.markAsRead(activeChatId, user.id); }
         scrollToBottom();
       },
       (deletedMsgId) => {
@@ -3070,6 +3093,7 @@ export default function App() {
     }
     setUser(res.user);
     setAuthModalOpen(false);
+    pushService.subscribe(res.user.id);
     notificationService.showNotification(
       "Добро пожаловать",
       `Привет, ${res.user.name}!`,
@@ -3095,6 +3119,7 @@ export default function App() {
     }
     setUser(res.user);
     setAuthModalOpen(false);
+    pushService.subscribe(res.user.id);
     notificationService.showNotification(
       "Готово!",
       `Добро пожаловать, ${res.user.name}!`,
@@ -3103,6 +3128,10 @@ export default function App() {
   }
 
   async function doLogout() {
+    if (user?.id) {
+      await supabase.from('profiles').update({ status: 'offline', last_seen: new Date().toISOString() }).eq('id', user.id)
+      pushService.unsubscribe(user.id)
+    }
     await authService.signOut();
     setUser(null);
     setChats([]);

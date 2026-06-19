@@ -1,12 +1,6 @@
 import { supabase } from '../lib/supabaseClient'
 
 export class NotificationsService {
-  showNotification(title, body, type = 'info') {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('lvkosp:toast', { detail: { title, body, type } }))
-    }
-  }
-
   async create(userId, type, fromUserId, entityId = null, entityPreview = null) {
     if (!userId || userId === fromUserId) return
     try {

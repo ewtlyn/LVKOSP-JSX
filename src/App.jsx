@@ -301,16 +301,9 @@ function PostCard({
       post.id,
       currentUser.id,
       commentText,
+      post.author_id,
     );
     if (res.success) {
-      if (post.author_id !== currentUser.id) {
-        onNotify?.(
-          "comment",
-          post.author_id,
-          post.id,
-          commentText.slice(0, 60),
-        );
-      }
       setCommentText("");
       const data = await postsService.getComments(post.id);
       setComments(data);
@@ -1669,6 +1662,82 @@ function SettingsPanel({ user, onUserUpdate, onLogout }) {
     </div>
   );
 }
+function ExploreView({ currentUser, onUserClick, onMentionClick }) {
+  const [query, setQuery] = useState('')
+  const [userResults, setUserResults] = useState([])
+  const [postResults, setPostResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    clearTimeout(timerRef.current)
+    if (!query.trim()) { setUserResults([]); setPostResults([]); return }
+    timerRef.current = setTimeout(async () => {
+      setSearching(true)
+      const [users, posts] = await Promise.all([
+        authService.searchUsers(query),
+        postsService.searchPosts(query),
+      ])
+      setUserResults(users)
+      setPostResults(posts)
+      setSearching(false)
+    }, 400)
+    return () => clearTimeout(timerRef.current)
+  }, [query])
+
+  return (
+    <div>
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Поиск людей и постов..."
+          style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '10px 14px 10px 38px', color: 'white', fontSize: 14, outline: 'none' }}
+        />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+      </div>
+      {searching && <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Поиск...</div>}
+      {!searching && !query.trim() && (
+        <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>Введите запрос для поиска</div>
+      )}
+      {!searching && query.trim() && userResults.length === 0 && postResults.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>Ничего не найдено</div>
+      )}
+      {userResults.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Люди</div>
+          {userResults.map(u => (
+            <div key={u.id} onClick={() => onUserClick(u)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+              <Avatar url={u.avatar_url} name={u.name} size={40} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{u.name}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{u.username}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {postResults.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Посты</div>
+          {postResults.map(p => (
+            <PostCard key={p.id} post={p} currentUser={currentUser} onUserClick={onUserClick} onMentionClick={onMentionClick} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StoryViewCount({ storyId }) {
+  const [count, setCount] = useState(null)
+  useEffect(() => {
+    storiesService.getViewCount(storyId).then(setCount)
+  }, [storyId])
+  if (count === null) return null
+  return <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '2px 6px' }}>👁 {count}</span>
+}
+
 function StoriesBar({ currentUser, followingIds, onUserClick }) {
   const [stories, setStories] = useState([])
   const [myStories, setMyStories] = useState([])
@@ -1734,7 +1803,7 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
           const hasMe = user.id === currentUser?.id
           return (
             <div key={user.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}
-              onClick={() => setViewer({ list: items, index: 0 })}>
+              onClick={() => { setViewer({ list: items, index: 0 }); if (currentUser?.id) storiesService.addView(items[0].id, currentUser.id) }}>
               <div style={{ width: 56, height: 56, borderRadius: '50%', padding: 2, background: 'linear-gradient(135deg,#a78bfa,#ec4899)', flexShrink: 0 }}>
                 <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '2px solid #0b0b0b', overflow: 'hidden' }}>
                   <Avatar url={user.avatar_url} name={user.name} size={52} />
@@ -1755,13 +1824,16 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
               ))}
             </div>
             <img src={viewer.list[viewer.index].media_url} alt="" style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: 12, display: 'block' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'absolute', top: 8, left: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'absolute', top: 8, left: 8, right: 48 }}>
               <Avatar url={viewer.list[viewer.index].user?.avatar_url} name={viewer.list[viewer.index].user?.name} size={32} />
               <span style={{ fontWeight: 600, fontSize: 13 }}>{viewer.list[viewer.index].user?.name}</span>
+              {viewer.list[viewer.index].user?.id === currentUser?.id && (
+                <StoryViewCount storyId={viewer.list[viewer.index].id} />
+              )}
             </div>
             <button onClick={() => setViewer(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-            {viewer.index > 0 && <button onClick={() => setViewer(v => ({ ...v, index: v.index - 1 }))} style={{ position: 'absolute', left: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>‹</button>}
-            {viewer.index < viewer.list.length - 1 && <button onClick={() => setViewer(v => ({ ...v, index: v.index + 1 }))} style={{ position: 'absolute', right: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>›</button>}
+            {viewer.index > 0 && <button onClick={() => setViewer(v => { const next = { ...v, index: v.index - 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })} style={{ position: 'absolute', left: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>‹</button>}
+            {viewer.index < viewer.list.length - 1 && <button onClick={() => setViewer(v => { const next = { ...v, index: v.index + 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })} style={{ position: 'absolute', right: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>›</button>}
           </div>
         </div>
       )}
@@ -1777,10 +1849,15 @@ function GlobalFeed({
   onNotify,
   onMentionClick,
 }) {
+  const PAGE = 20
   const [tab, setTab] = useState("all");
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
   const [followingIds, setFollowingIds] = useState([])
+  const sentinelRef = useRef(null)
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -1788,27 +1865,36 @@ function GlobalFeed({
     }
   }, [currentUser?.id])
 
-  const loadPosts = useCallback(async () => {
-    setLoading(true);
-    let all;
+  const loadPosts = useCallback(async (reset = true) => {
+    if (reset) { setLoading(true); setPosts([]); setOffset(0); setHasMore(true) }
+    else setLoadingMore(true)
+    const off = reset ? 0 : offset
+    let batch;
     if (tab === "following" && currentUser?.id) {
-      all = await followsService.getFollowingPosts(currentUser.id);
+      batch = await followsService.getFollowingPosts(currentUser.id);
     } else {
-      all = await postsService.getAllPosts();
+      batch = await postsService.getAllPosts(PAGE, off);
     }
     const enriched = await Promise.all(
-      all.map(async (p) => {
+      batch.map(async (p) => {
         const count = await postsService.getLikeCount(p.id);
         return { ...p, _likeCount: count };
       }),
     );
-    setPosts(enriched);
-    setLoading(false);
-  }, [tab, currentUser?.id]);
+    if (reset) { setPosts(enriched); setOffset(PAGE) }
+    else { setPosts(prev => [...prev, ...enriched]); setOffset(o => o + PAGE) }
+    if (batch.length < PAGE) setHasMore(false)
+    if (reset) setLoading(false); else setLoadingMore(false)
+  }, [tab, currentUser?.id, offset]);
+
+  useEffect(() => { loadPosts(true) }, [tab, currentUser?.id]);
 
   useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+    if (!sentinelRef.current || !hasMore) return
+    const obs = new IntersectionObserver(([entry]) => { if (entry.isIntersecting && !loadingMore && hasMore) loadPosts(false) }, { threshold: 0.1 })
+    obs.observe(sentinelRef.current)
+    return () => obs.disconnect()
+  }, [hasMore, loadingMore, loadPosts]);
 
   return (
     <div>
@@ -1867,18 +1953,23 @@ function GlobalFeed({
             : "Постов пока нет. Поделитесь чем-нибудь!"}
         </div>
       ) : (
-        posts.map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            currentUser={currentUser}
-            onShareClick={onShareClick}
-            onUserClick={onUserClick}
-            onDelete={onDelete}
-            onNotify={onNotify}
-            onMentionClick={onMentionClick}
-          />
-        ))
+        <>
+          {posts.map((p) => (
+            <PostCard
+              key={p.id}
+              post={p}
+              currentUser={currentUser}
+              onShareClick={onShareClick}
+              onUserClick={onUserClick}
+              onDelete={onDelete}
+              onNotify={onNotify}
+              onMentionClick={onMentionClick}
+            />
+          ))}
+          <div ref={sentinelRef} style={{ height: 20 }} />
+          {loadingMore && <div style={{ textAlign: 'center', padding: 10, color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Загрузка...</div>}
+          {!hasMore && posts.length > 0 && <div style={{ textAlign: 'center', padding: 14, color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>Всё загружено</div>}
+        </>
       )}
     </div>
   );
@@ -2068,6 +2159,7 @@ function MessageBubble({
   searchQuery,
   onEdit,
   onDelete,
+  onDeleteForAll,
   onUserClick,
   onForward,
   onReply,
@@ -2173,9 +2265,15 @@ function MessageBubble({
               </button>
             )}
             {isMe && (
-              <button onClick={() => onDelete(msg.id)} title="Удалить"
+              <button onClick={() => onDelete(msg.id)} title="Удалить у себя"
                 style={{ background: 'none', border: 'none', color: 'rgba(255,100,100,0.7)', cursor: 'pointer', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+              </button>
+            )}
+            {isMe && onDeleteForAll && (
+              <button onClick={() => onDeleteForAll(msg.id)} title="Удалить у всех"
+                style={{ background: 'none', border: 'none', color: 'rgba(255,50,50,0.9)', cursor: 'pointer', padding: '6px 8px', borderRadius: 12, fontSize: 10, fontWeight: 700, letterSpacing: -0.5 }}>
+                ✕↔
               </button>
             )}
             {onPin && (
@@ -2329,8 +2427,8 @@ function MessageBubble({
           {formatMessageTime(msg.created_at)}
           {msg.edited && <span style={{ opacity: 0.5 }}> · изм.</span>}
           {isMe && (
-            <span style={{ opacity: 0.6, marginLeft: 2 }}>
-              {msg.read ? " ✓✓" : " ✓"}
+            <span style={{ marginLeft: 2, color: msg.read ? '#60a5fa' : 'rgba(255,255,255,0.45)', fontSize: 12 }}>
+              {msg.read ? ' ✓✓' : ' ✓'}
             </span>
           )}
         </div>
@@ -2614,13 +2712,19 @@ export default function App() {
       scrollToBottom();
     })();
 
-    chatService.subscribeToMessages(activeChatId, (newMsg) => {
-      setMessages((prev) =>
-        prev.find((m) => m.id === newMsg.id) ? prev : [...prev, newMsg],
-      );
-      if (newMsg.sender_id !== user.id) resetUnread(activeChatId);
-      scrollToBottom();
-    });
+    chatService.subscribeToMessages(
+      activeChatId,
+      (newMsg) => {
+        setMessages((prev) =>
+          prev.find((m) => m.id === newMsg.id) ? prev : [...prev, newMsg],
+        );
+        if (newMsg.sender_id !== user.id) resetUnread(activeChatId);
+        scrollToBottom();
+      },
+      (deletedMsgId) => {
+        setMessages((prev) => prev.filter((m) => m.id !== deletedMsgId));
+      }
+    );
 
     return () => {
       alive = false;
@@ -2819,6 +2923,13 @@ export default function App() {
     else notificationService.showNotification("Ошибка", "Не удалось удалить сообщение", "error");
   }
 
+  async function handleDeleteForAll(msgId) {
+    if (!window.confirm("Удалить сообщение у всех участников?")) return;
+    const res = await chatService.deleteForEveryone(msgId);
+    if (res.success) setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    else notificationService.showNotification("Ошибка", "Не удалось удалить", "error");
+  }
+
   async function handleDeleteChat(chatId) {
     if (
       !window.confirm(
@@ -2836,6 +2947,11 @@ export default function App() {
       setActiveChatId(null);
       setMessages([]);
     }
+  }
+
+  async function handleMentionClick(username) {
+    const profile = await authService.getByUsername(username);
+    if (profile) openProfile(profile);
   }
 
   function openProfile(userData) {
@@ -3153,6 +3269,11 @@ export default function App() {
               onClick={() => { setActiveTab("feed"); setSidebarOpen(false) }}>
               <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="10.5" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="17" width="11" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg></span>
               <span className="tab__label">Лента</span>
+            </button>
+            <button className={`tab ${activeTab === "explore" ? "is-active" : ""}`} type="button"
+              onClick={() => { setActiveTab("explore"); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.6"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></span>
+              <span className="tab__label">Поиск</span>
             </button>
             <button className={`tab ${activeTab === "profile" ? "is-active" : ""}`} type="button"
               onClick={() => { setActiveTab("profile"); setViewingUser(null); setSidebarOpen(false) }}>
@@ -3568,11 +3689,12 @@ export default function App() {
                       searchQuery={msgSearchQuery}
                       onEdit={handleEditMessage}
                       onDelete={handleDeleteMessage}
+                      onDeleteForAll={handleDeleteForAll}
                       onUserClick={openProfile}
                       onForward={setForwardMsg}
                       onReply={setReplyTo}
                       currentUserId={user.id}
-                      onMentionClick={(username) => { /* TODO: open profile by username */ }}
+                      onMentionClick={handleMentionClick}
                       onPin={handlePinMessage}
                       isPinned={pinnedMsg?.id === msg.id}
                     />
@@ -4062,9 +4184,7 @@ export default function App() {
                 currentUser={user}
                 onShareClick={setSharePost}
                 onUserClick={openProfile}
-                onMentionClick={(username) => {
-                  // TODO: open profile by username lookup
-                }}
+                onMentionClick={handleMentionClick}
                 onNotify={(type, toId, entityId, preview) =>
                   notificationsService.create(
                     toId,
@@ -4075,6 +4195,16 @@ export default function App() {
                   )
                 }
               />
+            </div>
+          </section>
+
+          {/* ── ПОИСК / EXPLORE ── */}
+          <section className={`view ${activeTab === "explore" ? "is-active" : ""}`}>
+            <div className="view-header">
+              <div className="view-header__title">Поиск</div>
+            </div>
+            <div className="view-content" style={{ overflowY: "auto", padding: 16 }}>
+              {activeTab === "explore" && <ExploreView currentUser={user} onUserClick={openProfile} onMentionClick={handleMentionClick} />}
             </div>
           </section>
 
@@ -4173,7 +4303,7 @@ export default function App() {
                   setUser((prev) => ({ ...prev, banner_url: url }))
                 }
                 onUserClick={openProfile}
-                onMentionClick={(username) => { /* TODO */ }}
+                onMentionClick={handleMentionClick}
                 onNotify={(type, toId, entityId, preview) =>
                   notificationsService.create(
                     toId,

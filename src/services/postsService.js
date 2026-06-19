@@ -1,12 +1,12 @@
 import { supabase } from '../lib/supabaseClient'
 
 export class PostsService {
-  async getAllPosts(limit = 50) {
+  async getAllPosts(limit = 20, offset = 0) {
     const { data, error } = await supabase
       .from('posts')
       .select(`id, author_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`)
       .order('created_at', { ascending: false })
-      .limit(limit)
+      .range(offset, offset + limit - 1)
     if (error) { console.error('[getAllPosts]', error); return [] }
     return data || []
   }
@@ -150,7 +150,7 @@ export class PostsService {
     return { success: true }
   }
 
-  async addComment(postId, userId, content) {
+  async addComment(postId, userId, content, postAuthorId = null) {
     const text = content?.trim?.()
     if (!text) return { success: false, error: 'Empty comment' }
 
@@ -161,6 +161,27 @@ export class PostsService {
       .single()
 
     if (error) return { success: false, error: error.message }
+
+    if (postAuthorId && postAuthorId !== userId) {
+      try {
+        await supabase.from('notifications').insert({
+          user_id: postAuthorId, type: 'comment',
+          from_user_id: userId, entity_id: postId,
+          entity_preview: text.slice(0, 100),
+        })
+      } catch {}
+    }
+
     return { success: true, comment: data }
+  }
+
+  async searchPosts(query) {
+    if (!query?.trim()) return []
+    const { data } = await supabase.from('posts')
+      .select(`id, author_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`)
+      .ilike('content', `%${query.trim()}%`)
+      .order('created_at', { ascending: false })
+      .limit(30)
+    return data || []
   }
 }

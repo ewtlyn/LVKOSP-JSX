@@ -188,7 +188,7 @@ export class ChatService {
     return newChat.id
   }
 
-  subscribeToMessages(chatId, onNewMessage) {
+  subscribeToMessages(chatId, onNewMessage, onDeleteMessage) {
     this.unsubscribeFromMessages(chatId)
     const channel = supabase.channel(`chat:${chatId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
@@ -197,8 +197,16 @@ export class ChatService {
             .select('id, username, name, avatar_url').eq('id', payload.new.sender_id).single()
           onNewMessage?.({ ...payload.new, sender: sender || { id: payload.new.sender_id, name: 'Unknown', avatar_url: '' } })
         })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
+        (payload) => { onDeleteMessage?.(payload.old.id) })
       .subscribe()
     this.subscriptions.set(chatId, channel)
+  }
+
+  async deleteForEveryone(messageId) {
+    const { error } = await supabase.from('messages').delete().eq('id', messageId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
   }
 
   unsubscribeFromMessages(chatId) {

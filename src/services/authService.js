@@ -377,4 +377,24 @@ export class AuthService {
     if (error) return { success: false, error: error.message }
     return { success: true }
   }
+
+  async getByUsername(username) {
+    try {
+      const clean = username.startsWith('@') ? username.slice(1) : username
+      const { data } = await supabase.from('profiles')
+        .select('id, username, name, avatar_url, bio, banner_url')
+        .eq('username', clean).maybeSingle()
+      return data || null
+    } catch { return null }
+  }
+
+  async searchUsers(query) {
+    if (!query?.trim()) return []
+    const q = query.trim().toLowerCase()
+    const { data } = await supabase.from('profiles')
+      .select('id, username, name, avatar_url')
+      .or(`username.ilike.%${q}%,name.ilike.%${q}%`)
+      .limit(20)
+    return data || []
+  }
 }

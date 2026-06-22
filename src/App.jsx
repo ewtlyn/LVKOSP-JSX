@@ -1412,7 +1412,7 @@ function ProfileWall({
       {canPost && currentUser?.id && (
         <CreatePost
           user={currentUser}
-          onCreated={loadPosts}
+          onCreated={() => loadWallPage(true)}
           wallOwnerId={isMe ? null : profileUser?.id}
           wallOwnerName={isMe ? null : profileUser?.name}
         />

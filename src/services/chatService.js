@@ -11,7 +11,7 @@ export class ChatService {
       const { data: chatMemberships, error } = await supabase
         .from("chat_members")
         .select(
-          `chat_id, chats ( id, created_at, updated_at, last_message_content, last_message_at )`,
+          `chat_id, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar )`,
         )
         .eq("user_id", userId);
 
@@ -40,6 +40,25 @@ export class ChatService {
           .eq("chat_id", chat.id)
           .neq("user_id", userId);
 
+        if (chat.is_group) {
+          chats.push({
+            id: chat.id,
+            name: chat.group_name || 'Группа',
+            username: '',
+            avatarUrl: chat.group_avatar || '',
+            lastMessage: chat.last_message_content || '',
+            lastMessageTime: chat.last_message_at || chat.created_at,
+            userId: null,
+            status: null,
+            last_seen: null,
+            unreadCount: 0,
+            archived: archivedMap[chat.id] || false,
+            isGroup: true,
+            memberCount: otherMembers?.length ? otherMembers.length + 1 : 1,
+          });
+          continue;
+        }
+
         const otherMember = otherMembers?.[0]?.profiles;
         if (!otherMember) continue;
 
@@ -61,18 +80,18 @@ export class ChatService {
           lastMessageTime: chat.last_message_at || chat.created_at,
           userId: otherMember.id,
           status,
+          last_seen: otherMember.last_seen || null,
           unreadCount: 0,
           archived: archivedMap[chat.id] || false,
+          isGroup: false,
         });
       }
       const seen = new Map();
       for (const chat of chats) {
-        const ex = seen.get(chat.userId);
-        if (
-          !ex ||
-          new Date(chat.lastMessageTime) > new Date(ex.lastMessageTime)
-        )
-          seen.set(chat.userId, chat);
+        const key = chat.isGroup ? `group:${chat.id}` : `dm:${chat.userId}`;
+        const ex = seen.get(key);
+        if (!ex || new Date(chat.lastMessageTime) > new Date(ex.lastMessageTime))
+          seen.set(key, chat);
       }
       return [...seen.values()].sort(
         (a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime),
@@ -282,6 +301,26 @@ export class ChatService {
       },
     ]);
     return newChat.id;
+  }
+
+  async createGroupChat(creatorId, memberIds, name) {
+    const { data: newChat, error } = await supabase
+      .from('chats')
+      .insert({ created_by: creatorId, group_name: name, is_group: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select().single();
+    if (error) return { success: false, error: error.message };
+    const allIds = [creatorId, ...memberIds.filter(id => id !== creatorId)];
+    await supabase.from('chat_members').insert(allIds.map(uid => ({
+      chat_id: newChat.id, user_id: uid, joined_at: new Date().toISOString(), last_read_at: new Date().toISOString()
+    })));
+    return { success: true, chatId: newChat.id };
+  }
+
+  async getGroupMembers(chatId) {
+    const { data } = await supabase.from('chat_members')
+      .select('user_id, profiles(id, name, username, avatar_url, status)')
+      .eq('chat_id', chatId);
+    return (data || []).map(r => r.profiles).filter(Boolean);
   }
 
   subscribeToMessages(chatId, onNewMessage, onDeleteMessage) {

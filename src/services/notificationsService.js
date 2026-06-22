@@ -8,6 +8,9 @@ export class NotificationsService {
         user_id: userId, type, from_user_id: fromUserId,
         entity_id: entityId, entity_preview: entityPreview,
       })
+      const titles = { like: '❤️ Лайк', comment: '💬 Комментарий', follow: '👤 Подписка', message: '💌 Сообщение', mention: '@ Упоминание' }
+      const bodies = { like: 'Кто-то лайкнул ваш пост', comment: entityPreview || 'Новый комментарий', follow: 'На вас подписались', message: entityPreview || 'Новое сообщение', mention: 'Вас упомянули' }
+      supabase.functions.invoke('send-push', { body: { user_id: userId, title: titles[type] || 'LVKOSP', body: bodies[type] || '', url: '/' } }).catch(() => {})
     } catch {}
   }
 

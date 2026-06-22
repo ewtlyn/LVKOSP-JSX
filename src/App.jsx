@@ -22,6 +22,64 @@ import { pushService } from "./services/pushService";
 
 const safeText = (s) => String(s ?? "");
 
+// ─── ConfirmDialog ────────────────────────────────────────────────────────────
+let _confirmResolve = null;
+let _setConfirmState = null;
+
+export function showConfirm(message, title = 'Подтверждение') {
+  return new Promise(resolve => {
+    _confirmResolve = resolve;
+    _setConfirmState?.({ open: true, message, title });
+  });
+}
+
+function ConfirmDialog() {
+  const [state, setState] = useState({ open: false, message: '', title: '' });
+  _setConfirmState = setState;
+  if (!state.open) return null;
+  const handle = (v) => { setState({ open: false }); _confirmResolve?.(v); _confirmResolve = null; };
+  return (
+    <div onClick={() => handle(false)} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#1c1c2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: '24px 22px', width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>{state.title}</div>
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', marginBottom: 22, lineHeight: 1.5 }}>{state.message}</div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={() => handle(false)} style={{ padding: '9px 18px', borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14 }}>Отмена</button>
+          <button onClick={() => handle(true)} style={{ padding: '9px 18px', borderRadius: 10, background: '#ef4444', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>Да</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ImageLightbox ────────────────────────────────────────────────────────────
+let _setLightboxSrc = null;
+export function openLightbox(src) { _setLightboxSrc?.(src); }
+
+function ImageLightbox() {
+  const [src, setSrc] = useState(null);
+  _setLightboxSrc = setSrc;
+  if (!src) return null;
+  return (
+    <div onClick={() => setSrc(null)} style={{ position: 'fixed', inset: 0, zIndex: 99998, background: 'rgba(0,0,0,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
+      <img src={src} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', userSelect: 'none' }} onClick={e => e.stopPropagation()} />
+      <button onClick={() => setSrc(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%', width: 38, height: 38, color: 'white', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+      <a href={src} download target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 10, padding: '8px 18px', color: 'white', fontSize: 13, textDecoration: 'none', cursor: 'pointer' }}>⬇ Скачать</a>
+    </div>
+  );
+}
+
+function formatLastSeen(status, lastSeen) {
+  if (status === 'online') return 'В сети';
+  if (!lastSeen) return 'Не в сети';
+  const diff = Date.now() - new Date(lastSeen).getTime();
+  if (diff < 60000) return 'только что';
+  if (diff < 3600000) return `был(а) ${Math.floor(diff / 60000)} мин назад`;
+  if (diff < 86400000) return `был(а) ${Math.floor(diff / 3600000)} ч назад`;
+  if (diff < 172800000) return 'был(а) вчера';
+  return `был(а) ${new Date(lastSeen).toLocaleDateString('ru', { day: 'numeric', month: 'long' })}`;
+}
+
 function formatTime(ts) {
   if (!ts) return "--:--";
   const d = new Date(ts);
@@ -213,9 +271,10 @@ function PostCard({
   onDelete,
   onNotify,
   onMentionClick,
+  onReposted,
 }) {
   const [likeCount, setLikeCount] = useState(post._likeCount || 0);
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(post._liked || false);
   const [saved, setSaved] = useState(post._saved || false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState([]);
@@ -225,7 +284,13 @@ function PostCard({
   const [commentLoading, setCommentLoading] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [repostOriginal, setRepostOriginal] = useState(null);
-  const [repostDone, setRepostDone] = useState(false);
+  const [repostDone, setRepostDone] = useState(post._reposted || false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(post.content || '');
+  const [editSaving, setEditSaving] = useState(false);
+  const [likersOpen, setLikersOpen] = useState(false);
+  const [likers, setLikers] = useState([]);
+  const doubleTapRef = useRef(null);
   const [extraMedia, setExtraMedia] = useState([]);
 
   useEffect(() => {
@@ -241,7 +306,7 @@ function PostCard({
   }, [post.id]);
 
   async function handleDeletePost() {
-    if (!window.confirm("Удалить пост?")) return;
+    if (!await showConfirm("Удалить этот пост? Это действие нельзя отменить.", "Удалить пост")) return;
     const res = await postsService.deletePost(post.id);
     if (res.success) {
       setDeleted(true);
@@ -251,15 +316,14 @@ function PostCard({
 
   async function handleRepost() {
     if (!currentUser || repostDone) return;
-    if (!window.confirm("Сделать репост?")) return;
+    if (!await showConfirm("Добавить этот пост на свою стену?", "Репост")) return;
     const res = await postsService.repost(currentUser.id, post.id);
     if (res.success) {
       setRepostDone(true);
-      notificationService.showNotification(
-        "Репост",
-        "Пост добавлен на вашу стену",
-        "success",
-      );
+      onReposted?.();
+      notificationService.showNotification("Репост", "Пост добавлен на вашу стену", "success");
+    } else {
+      notificationService.showNotification("Ошибка", res.error || "Не удалось сделать репост", "error");
     }
   }
 
@@ -275,6 +339,28 @@ function PostCard({
     } else if (!prev && post.author_id !== currentUser.id) {
       onNotify?.("like", post.author_id, post.id, post.content?.slice(0, 60));
     }
+  }
+
+  function handleDoubleTap() {
+    if (!currentUser || liked) return;
+    const now = Date.now();
+    if (doubleTapRef.current && now - doubleTapRef.current < 350) { handleLike(); doubleTapRef.current = null; return; }
+    doubleTapRef.current = now;
+  }
+
+  async function handleSaveEdit() {
+    if (!editText.trim()) return;
+    setEditSaving(true);
+    const res = await postsService.updatePost(post.id, editText);
+    if (res.success) { post.content = editText; setEditing(false); }
+    else notificationService.showNotification('Ошибка', res.error, 'error');
+    setEditSaving(false);
+  }
+
+  async function openLikers() {
+    setLikersOpen(true);
+    const data = await postsService.getLikes(post.id);
+    setLikers(data);
   }
 
   async function handleSave() {
@@ -319,6 +405,8 @@ function PostCard({
 
   return (
     <div
+      onDoubleClick={handleDoubleTap}
+      onTouchEnd={handleDoubleTap}
       style={{
         background: "rgba(255,255,255,0.03)",
         border: "1px solid rgba(255,255,255,0.08)",
@@ -362,46 +450,18 @@ function PostCard({
           </div>
         </div>
         <div style={{ display: "flex", gap: 2 }}>
-          {currentUser?.id === post.author_id && (
-            <button
-              onClick={handleDeletePost}
-              title="Удалить пост"
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "rgba(255,100,100,0.55)",
-                cursor: "pointer",
-                padding: 6,
-                borderRadius: 8,
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                <polyline
-                  points="3 6 5 6 21 6"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M10 11v6M14 11v6"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+          {currentUser?.id === post.author_id && !editing && (
+            <>
+              <button onClick={() => { setEditing(true); setEditText(post.content || '') }} title="Редактировать" style={{ background: 'transparent', border: 'none', color: 'rgba(160,160,255,0.55)', cursor: 'pointer', padding: 6, borderRadius: 8, fontSize: 15 }}>✏️</button>
+              <button onClick={handleDeletePost} title="Удалить пост" style={{ background: "transparent", border: "none", color: "rgba(255,100,100,0.55)", cursor: "pointer", padding: 6, borderRadius: 8 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                  <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                  <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
+              </button>
+            </>
           )}
           {onShareClick && (
             <button
@@ -516,16 +576,25 @@ function PostCard({
           )}
         </div>
       )}
-      {!post.repost_of_id && post.content && (
+      {editing ? (
+        <div style={{ padding: '0 16px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={3}
+            style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', padding: '8px 10px', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleSaveEdit} disabled={editSaving} style={{ padding: '6px 14px', borderRadius: 8, background: '#7c3aed', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13 }}>{editSaving ? '...' : 'Сохранить'}</button>
+            <button onClick={() => setEditing(false)} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
+          </div>
+        </div>
+      ) : (!post.repost_of_id && post.content && (
         <div style={{ padding: "0 16px 10px", fontSize: 14, lineHeight: 1.6 }}>
           {renderText(post.content, onMentionClick)}
         </div>
-      )}
+      ))}
       {!post.repost_of_id && post.media_url && (
         extraMedia.length > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
             {[post.media_url, ...extraMedia].map((url, i) => (
-              <img key={i} src={url} alt="" onClick={() => window.open(url, '_blank')}
+              <img key={i} src={url} alt="" onClick={() => openLightbox(url)}
                 style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }} />
             ))}
           </div>
@@ -533,7 +602,7 @@ function PostCard({
           <img
             src={post.media_url}
             alt=""
-            onClick={() => window.open(post.media_url, "_blank")}
+            onClick={() => openLightbox(post.media_url)}
             style={{
               width: "100%",
               maxHeight: 520,
@@ -563,7 +632,7 @@ function PostCard({
             border: "none",
             color: liked ? "#ef4444" : "rgba(255,255,255,0.5)",
             cursor: "pointer",
-            padding: "6px 10px",
+            padding: "6px 6px 6px 10px",
             borderRadius: 8,
             fontSize: 13,
             transition: "color 0.15s",
@@ -582,6 +651,8 @@ function PostCard({
               strokeLinejoin="round"
             />
           </svg>
+        </button>
+        <button onClick={openLikers} style={{ background: 'transparent', border: 'none', color: liked ? '#ef4444' : 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '6px 4px 6px 0', fontSize: 13, borderRadius: 8 }}>
           {likeCount}
         </button>
         <button
@@ -686,34 +757,9 @@ function PostCard({
             </div>
           )}
           {comments.map((c) => (
-            <div
-              key={c.id}
-              style={{ display: "flex", gap: 8, marginBottom: 10 }}
-            >
-              <Avatar url={c.user?.avatar_url} name={c.user?.name} size={28} />
-              <div
-                style={{
-                  background: "rgba(255,255,255,0.05)",
-                  borderRadius: 10,
-                  padding: "6px 10px",
-                  flex: 1,
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 2 }}>
-                  {c.user?.name}
-                </div>
-                <div style={{ fontSize: 13 }}>{c.content}</div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "rgba(255,255,255,0.3)",
-                    marginTop: 2,
-                  }}
-                >
-                  {formatRelative(c.created_at)}
-                </div>
-              </div>
-            </div>
+            <CommentItem key={c.id} comment={c} currentUser={currentUser}
+              onDeleted={() => { setComments(prev => prev.filter(x => x.id !== c.id)); setCommentCount(n => (n ?? 1) - 1); }}
+              onEdited={(id, text) => setComments(prev => prev.map(x => x.id === id ? { ...x, content: text } : x))} />
           ))}
           {currentUser && (
             <form
@@ -755,6 +801,73 @@ function PostCard({
           )}
         </div>
       )}
+      {likersOpen && (
+        <div onClick={() => setLikersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '18px 18px 0 0', padding: 20, width: '100%', maxWidth: 480, maxHeight: '60vh', overflowY: 'auto' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>❤️ Лайки</div>
+            {likers.length === 0
+              ? <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Загрузка...</div>
+              : likers.map(u => (
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <Avatar url={u.avatar_url} name={u.name} size={36} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>@{u.username}</div>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── CommentItem ───────────────────────────────────────────────────────────────
+function CommentItem({ comment: c, currentUser, onDeleted, onEdited }) {
+  const [editMode, setEditMode] = useState(false);
+  const [editText, setEditText] = useState(c.content || '');
+  const [saving, setSaving] = useState(false);
+  const isOwn = currentUser?.id === c.user?.id;
+
+  async function handleDelete() {
+    if (!await showConfirm('Удалить этот комментарий?', 'Удалить')) return;
+    const res = await postsService.deleteComment(c.id);
+    if (res.success) onDeleted?.();
+  }
+
+  async function handleSave() {
+    if (!editText.trim()) return;
+    setSaving(true);
+    const res = await postsService.editComment(c.id, editText);
+    if (res.success) { onEdited?.(c.id, editText); setEditMode(false); }
+    setSaving(false);
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+      <Avatar url={c.user?.avatar_url} name={c.user?.name} size={28} />
+      <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '6px 10px', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+          <span style={{ fontWeight: 700, fontSize: 12 }}>{c.user?.name}</span>
+          {isOwn && !editMode && (
+            <>
+              <button onClick={() => { setEditMode(true); setEditText(c.content) }} style={{ background: 'none', border: 'none', color: 'rgba(160,160,255,0.5)', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>✏️</button>
+              <button onClick={handleDelete} style={{ background: 'none', border: 'none', color: 'rgba(255,100,100,0.5)', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>✕</button>
+            </>
+          )}
+        </div>
+        {editMode ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()}
+              style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, padding: '4px 8px', color: 'white', fontSize: 13 }} />
+            <button onClick={handleSave} disabled={saving} style={{ background: '#7c3aed', border: 'none', borderRadius: 7, color: 'white', padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>{saving ? '...' : '✓'}</button>
+            <button onClick={() => setEditMode(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 7, color: 'white', padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✕</button>
+          </div>
+        ) : <div style={{ fontSize: 13 }}>{c.content}</div>}
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{formatRelative(c.created_at)}</div>
+      </div>
     </div>
   );
 }
@@ -992,23 +1105,45 @@ function ProfileWall({
     }
   }, [profileUser?.id, currentUser?.id, isMe]);
 
-  const loadPosts = useCallback(async () => {
+  const [wallHasMore, setWallHasMore] = useState(true);
+  const wallOffsetRef = useRef(0);
+  const wallSentinelRef = useRef(null);
+  const wallLoadingRef = useRef(false);
+  const WALL_PAGE = 15;
+
+  const loadWallPage = useCallback(async (reset = false) => {
     if (!profileUser?.id) return;
-    setLoading(true);
-    const data = await postsService.getPostsByUser(profileUser.id);
-    const enriched = await Promise.all(
-      data.map(async (p) => {
-        const count = await postsService.getLikeCount(p.id);
-        return { ...p, _likeCount: count };
-      }),
-    );
-    setPosts(enriched);
+    if (wallLoadingRef.current) return;
+    wallLoadingRef.current = true;
+    const offset = reset ? 0 : wallOffsetRef.current;
+    if (reset) setLoading(true);
+    const data = await postsService.getPostsByUserPaged(profileUser.id, WALL_PAGE, offset);
+    const postIds = data.map(p => p.id);
+    const [likedSet, repostedSet, ...likeCounts] = postIds.length
+      ? await Promise.all([
+          postsService.getLikedPostIds(currentUser?.id, postIds),
+          postsService.getRepostedPostIds(currentUser?.id, postIds),
+          ...data.map(p => postsService.getLikeCount(p.id)),
+        ])
+      : [new Set(), new Set()];
+    const enriched = data.map((p, i) => ({
+      ...p, _likeCount: likeCounts[i], _liked: likedSet.has(p.id), _reposted: repostedSet.has(p.id),
+    }));
+    if (reset) { setPosts(enriched); wallOffsetRef.current = enriched.length; }
+    else { setPosts(prev => [...prev, ...enriched]); wallOffsetRef.current += enriched.length; }
+    setWallHasMore(data.length === WALL_PAGE);
     setLoading(false);
-  }, [profileUser?.id]);
+    wallLoadingRef.current = false;
+  }, [profileUser?.id, currentUser?.id]);
+
+  useEffect(() => { wallOffsetRef.current = 0; loadWallPage(true); }, [profileUser?.id]);
 
   useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+    if (!wallSentinelRef.current) return;
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting && wallHasMore) loadWallPage(false); }, { threshold: 0.1 });
+    obs.observe(wallSentinelRef.current);
+    return () => obs.disconnect();
+  }, [wallHasMore, loadWallPage]);
 
   useEffect(() => {
     if (!currentUser?.id || profileSection !== 'bookmarks') return
@@ -1315,23 +1450,38 @@ function ProfileWall({
             borderRadius: 14,
           }}
         >
-          {isMe
-            ? "Постов пока нет. Поделитесь чем-нибудь!"
-            : "Постов пока нет."}
+          {isMe ? (
+            <div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>✍️</div>
+              <div>Постов пока нет.</div>
+              <div style={{ fontSize: 12, marginTop: 4, color: 'rgba(255,255,255,0.18)' }}>Поделитесь чем-нибудь!</div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🗒️</div>
+              <div>У пользователя пока нет постов.</div>
+            </div>
+          )}
         </div>
       ) : (
-        posts.map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            currentUser={currentUser}
-            onShareClick={onShareClick}
-            onUserClick={onUserClick}
-            onDelete={onDelete}
-            onNotify={onNotify}
-            onMentionClick={onMentionClick}
-          />
-        ))
+        <>
+          {posts.map((p) => (
+            <PostCard
+              key={p.id}
+              post={p}
+              currentUser={currentUser}
+              onShareClick={onShareClick}
+              onUserClick={onUserClick}
+              onDelete={onDelete}
+              onNotify={onNotify}
+              onMentionClick={onMentionClick}
+            />
+          ))}
+          <div ref={wallSentinelRef} style={{ height: 1 }} />
+          {!wallHasMore && posts.length > 0 && (
+            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 12, padding: '12px 0' }}>Все посты загружены</div>
+          )}
+        </>
       )}
 
       {followModal && (
@@ -1672,6 +1822,11 @@ function ExploreView({ currentUser, onUserClick, onMentionClick }) {
   const [postResults, setPostResults] = useState([])
   const [searching, setSearching] = useState(false)
   const timerRef = useRef(null)
+  const blockedIdsRef = useRef(new Set())
+
+  useEffect(() => {
+    if (currentUser?.id) blocksService.getBlockedIds(currentUser.id).then(ids => { blockedIdsRef.current = new Set(ids) })
+  }, [currentUser?.id])
 
   useEffect(() => {
     clearTimeout(timerRef.current)
@@ -1682,8 +1837,9 @@ function ExploreView({ currentUser, onUserClick, onMentionClick }) {
         authService.searchUsers(query),
         postsService.searchPosts(query),
       ])
-      setUserResults(users)
-      setPostResults(posts)
+      const blocked = blockedIdsRef.current
+      setUserResults(users.filter(u => !blocked.has(u.id)))
+      setPostResults(posts.filter(p => !blocked.has(p.author_id)))
       setSearching(false)
     }, 400)
     return () => clearTimeout(timerRef.current)
@@ -1729,6 +1885,106 @@ function ExploreView({ currentUser, onUserClick, onMentionClick }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+const STORY_DURATION = 5000
+
+function StoryViewer({ viewer, currentUser, onClose, onNext, onPrev }) {
+  const { list, index } = viewer
+  const story = list[index]
+  const isOwn = story.user?.id === currentUser?.id
+  const [progress, setProgress] = useState(0)
+  const [showViewers, setShowViewers] = useState(false)
+  const [viewers, setViewers] = useState([])
+  const timerRef = useRef(null)
+  const startRef = useRef(null)
+
+  useEffect(() => {
+    setProgress(0)
+    setShowViewers(false)
+    startRef.current = Date.now()
+    timerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startRef.current
+      const p = Math.min((elapsed / STORY_DURATION) * 100, 100)
+      setProgress(p)
+      if (p >= 100) {
+        clearInterval(timerRef.current)
+        if (index < list.length - 1) onNext()
+        else onClose()
+      }
+    }, 50)
+    return () => clearInterval(timerRef.current)
+  }, [index])
+
+  function handleViewersClick(e) {
+    e.stopPropagation()
+    if (!isOwn) return
+    setShowViewers(v => !v)
+    if (!showViewers) storiesService.getViews(story.id).then(setViewers)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ position: 'relative', width: '100%', maxWidth: 420, height: '100dvh', maxHeight: 900, display: 'flex', flexDirection: 'column' }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* прогресс-бары */}
+        <div style={{ display: 'flex', gap: 3, padding: '12px 12px 0', position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 }}>
+          {list.map((_, i) => (
+            <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.3)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: 2, background: 'white', width: i < index ? '100%' : i === index ? `${progress}%` : '0%', transition: i === index ? 'none' : undefined }} />
+            </div>
+          ))}
+        </div>
+
+        {/* шапка */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'absolute', top: 28, left: 12, right: 44, zIndex: 2 }}>
+          <Avatar url={story.user?.avatar_url} name={story.user?.name} size={36} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'white', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{story.user?.name}</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{story.expires_at ? `до ${new Date(story.expires_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}` : ''}</div>
+          </div>
+          {isOwn && (
+            <button onClick={handleViewersClick} style={{ marginLeft: 'auto', background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: 12, padding: '4px 10px', color: 'rgba(255,255,255,0.8)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              👁 <StoryViewCount storyId={story.id} />
+            </button>
+          )}
+        </div>
+
+        {/* фото */}
+        <img src={story.media_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+
+        {/* кнопка закрыть */}
+        <button onClick={onClose} style={{ position: 'absolute', top: 28, right: 10, background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 34, height: 34, color: 'white', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>✕</button>
+
+        {/* зоны тапа влево/вправо */}
+        <div style={{ position: 'absolute', left: 0, top: 80, bottom: 0, width: '40%', zIndex: 1 }}
+          onClick={e => { e.stopPropagation(); if (index > 0) onPrev() }} />
+        <div style={{ position: 'absolute', right: 0, top: 80, bottom: 0, width: '40%', zIndex: 1 }}
+          onClick={e => { e.stopPropagation(); if (index < list.length - 1) onNext(); else onClose() }} />
+
+        {/* список просмотревших */}
+        {showViewers && isOwn && (
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(14,14,14,0.97)', borderRadius: '18px 18px 0 0', padding: 16, maxHeight: '50vh', overflowY: 'auto', zIndex: 4 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: 'white' }}>Просмотрели</div>
+            {viewers.length === 0
+              ? <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Пока никто не смотрел</div>
+              : viewers.map(v => (
+                <div key={v.viewer_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <Avatar url={v.viewer?.avatar_url} name={v.viewer?.name} size={36} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{v.viewer?.name}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>@{v.viewer?.username}</div>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1819,27 +2075,13 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
         })}
       </div>
       {viewer && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setViewer(null)}>
-          <div style={{ position: 'relative', maxWidth: 400, maxHeight: '90vh', width: '100%' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', gap: 4, position: 'absolute', top: -24, left: 0, right: 0 }}>
-              {viewer.list.map((_, i) => (
-                <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= viewer.index ? '#a78bfa' : 'rgba(255,255,255,0.2)' }} />
-              ))}
-            </div>
-            <img src={viewer.list[viewer.index].media_url} alt="" style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: 12, display: 'block' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'absolute', top: 8, left: 8, right: 48 }}>
-              <Avatar url={viewer.list[viewer.index].user?.avatar_url} name={viewer.list[viewer.index].user?.name} size={32} />
-              <span style={{ fontWeight: 600, fontSize: 13 }}>{viewer.list[viewer.index].user?.name}</span>
-              {viewer.list[viewer.index].user?.id === currentUser?.id && (
-                <StoryViewCount storyId={viewer.list[viewer.index].id} />
-              )}
-            </div>
-            <button onClick={() => setViewer(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-            {viewer.index > 0 && <button onClick={() => setViewer(v => { const next = { ...v, index: v.index - 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })} style={{ position: 'absolute', left: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>‹</button>}
-            {viewer.index < viewer.list.length - 1 && <button onClick={() => setViewer(v => { const next = { ...v, index: v.index + 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })} style={{ position: 'absolute', right: -40, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: 'white', cursor: 'pointer', fontSize: 18 }}>›</button>}
-          </div>
-        </div>
+        <StoryViewer
+          viewer={viewer}
+          currentUser={currentUser}
+          onClose={() => setViewer(null)}
+          onNext={() => setViewer(v => { const next = { ...v, index: v.index + 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })}
+          onPrev={() => setViewer(v => { const next = { ...v, index: v.index - 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })}
+        />
       )}
     </>
   )
@@ -1863,9 +2105,12 @@ function GlobalFeed({
   const [followingIds, setFollowingIds] = useState([])
   const sentinelRef = useRef(null)
 
+  const [blockedIds, setBlockedIds] = useState(new Set())
+
   useEffect(() => {
     if (currentUser?.id) {
       followsService.getFollowing(currentUser.id).then(list => setFollowingIds(list.map(u => u.id)))
+      blocksService.getBlockedIds(currentUser.id).then(ids => setBlockedIds(new Set(ids)))
     }
   }, [currentUser?.id])
 
@@ -1879,17 +2124,21 @@ function GlobalFeed({
     } else {
       batch = await postsService.getAllPosts(PAGE, off);
     }
-    const enriched = await Promise.all(
-      batch.map(async (p) => {
-        const count = await postsService.getLikeCount(p.id);
-        return { ...p, _likeCount: count };
-      }),
-    );
+    const filtered = batch.filter(p => !blockedIds.has(p.author_id))
+    const postIds = filtered.map(p => p.id)
+    const [likedSet, repostedSet, ...likeCounts] = postIds.length ? await Promise.all([
+      postsService.getLikedPostIds(currentUser?.id, postIds),
+      postsService.getRepostedPostIds(currentUser?.id, postIds),
+      ...filtered.map(p => postsService.getLikeCount(p.id)),
+    ]) : [new Set(), new Set()];
+    const enriched = filtered.map((p, i) => ({
+      ...p, _likeCount: likeCounts[i], _liked: likedSet.has(p.id), _reposted: repostedSet.has(p.id),
+    }));
     if (reset) { setPosts(enriched); setOffset(PAGE) }
     else { setPosts(prev => [...prev, ...enriched]); setOffset(o => o + PAGE) }
     if (batch.length < PAGE) setHasMore(false)
     if (reset) setLoading(false); else setLoadingMore(false)
-  }, [tab, currentUser?.id, offset]);
+  }, [tab, currentUser?.id, offset, blockedIds]);
 
   useEffect(() => { loadPosts(true) }, [tab, currentUser?.id]);
 
@@ -1968,6 +2217,7 @@ function GlobalFeed({
               onDelete={onDelete}
               onNotify={onNotify}
               onMentionClick={onMentionClick}
+              onReposted={() => loadPosts(true)}
             />
           ))}
           <div ref={sentinelRef} style={{ height: 20 }} />
@@ -2333,7 +2583,7 @@ function MessageBubble({
           <img
             src={msg.media_url}
             alt="фото"
-            onClick={() => window.open(msg.media_url, "_blank")}
+            onClick={() => openLightbox(msg.media_url)}
             style={{
               maxWidth: 280,
               borderRadius: 10,
@@ -2478,6 +2728,7 @@ export default function App() {
   const [chats, setChats] = useState([]);
   const chatsRef = useRef(chats);
   const [showArchived, setShowArchived] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
@@ -2572,6 +2823,7 @@ export default function App() {
 
   // далее
   const [forwardMsg, setForwardMsg] = useState(null);
+  const [forwardLoading, setForwardLoading] = useState(false);
 
   // reply
   const [replyTo, setReplyTo] = useState(null);
@@ -2691,6 +2943,11 @@ export default function App() {
     notificationsService.getUnread(user.id).then(setDbNotifs);
     notificationsService.getUnreadCount(user.id).then(setDbNotifsUnread);
 
+    const notifSub = supabase.channel(`notifs:${user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, () => {
+        setDbNotifsUnread(n => n + 1)
+      }).subscribe()
+
     const poll = setInterval(async () => {
       const [newFriends, newReqs, count] = await Promise.all([
         followsService.getMutualFollows(user.id),
@@ -2722,6 +2979,7 @@ export default function App() {
     return () => {
       clearInterval(t);
       clearInterval(poll);
+      supabase.removeChannel(notifSub);
     };
   }, [user?.id]);
 
@@ -2959,18 +3217,14 @@ export default function App() {
   }
 
   async function handleDeleteForAll(msgId) {
-    if (!window.confirm("Удалить сообщение у всех участников?")) return;
+    if (!await showConfirm("Удалить сообщение у всех участников чата?", "Удалить сообщение")) return;
     const res = await chatService.deleteForEveryone(msgId);
     if (res.success) setMessages((prev) => prev.filter((m) => m.id !== msgId));
     else notificationService.showNotification("Ошибка", "Не удалось удалить", "error");
   }
 
   async function handleDeleteChat(chatId) {
-    if (
-      !window.confirm(
-        "Удалить переписку? Все сообщения исчезнут у обоих участников.",
-      )
-    )
+    if (!await showConfirm("Все сообщения исчезнут у обоих участников. Это нельзя отменить.", "Удалить переписку?"))
       return;
     const res = await chatService.deleteChat(chatId);
     if (!res.success) {
@@ -3208,6 +3462,8 @@ export default function App() {
 
   return (
     <>
+      <ConfirmDialog />
+      <ImageLightbox />
       <div
         id="notificationContainer"
         style={{
@@ -3347,10 +3603,13 @@ export default function App() {
                   >
                     <div style={{ position: "relative" }}>
                       <Avatar url={chat.avatarUrl} name={chat.name} size={44} />
-                      <div className={chat.status === "online" ? "online-status" : "offline-status"} />
+                      {chat.isGroup
+                        ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: '#7c3aed', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
+                        : <div className={chat.status === "online" ? "online-status" : "offline-status"} />
+                      }
                     </div>
                     <div className="dmMeta">
-                      <div className="dmName">{safeText(chat.name)}</div>
+                      <div className="dmName">{safeText(chat.name)}{chat.isGroup && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginLeft: 5 }}>{chat.memberCount} чел.</span>}</div>
                       <div className="dmSnippet">{safeText(chat.lastMessage || "Нет сообщений")}</div>
                     </div>
                     <div className="dmRight">
@@ -3433,18 +3692,11 @@ export default function App() {
                 >
                   {activeChat && (
                     <div style={{ position: "relative" }}>
-                      <Avatar
-                        url={activeChat.avatarUrl}
-                        name={activeChat.name}
-                        size={44}
-                      />
-                      <div
-                        className={
-                          activeChat.status === "online"
-                            ? "online-status"
-                            : "offline-status"
-                        }
-                      />
+                      <Avatar url={activeChat.avatarUrl} name={activeChat.name} size={44} />
+                      {activeChat.isGroup
+                        ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: '#7c3aed', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
+                        : <div className={activeChat.status === "online" ? "online-status" : "offline-status"} />
+                      }
                     </div>
                   )}
                   <div className="chatHeader__meta">
@@ -3469,6 +3721,10 @@ export default function App() {
                               <span />
                             </div>
                           </div>
+                        ) : activeChat.isGroup ? (
+                          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
+                            {activeChat.memberCount} участников
+                          </span>
                         ) : (
                           <>
                             <span
@@ -3481,9 +3737,7 @@ export default function App() {
                               }}
                             />
                             <span>
-                              {activeChat.status === "online"
-                                ? "В сети"
-                                : "Не в сети"}
+                              {formatLastSeen(activeChat.status, activeChat.last_seen)}
                             </span>
                           </>
                         )}
@@ -3662,10 +3916,17 @@ export default function App() {
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                     <div style={{ padding: '16px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 18, color: 'white' }}>Переписки</div>
-                      <button onClick={() => setShowArchived(v => !v)}
-                        style={{ background: 'none', border: 'none', fontSize: 12, color: showArchived ? '#a78bfa' : 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '4px 8px', fontWeight: 600 }}>
-                        {showArchived ? '← Назад' : 'Архив'}
-                      </button>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <button onClick={() => setCreateGroupOpen(true)}
+                          title="Создать группу"
+                          style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 8, fontSize: 13, color: '#a78bfa', cursor: 'pointer', padding: '4px 10px', fontWeight: 600 }}>
+                          + Группа
+                        </button>
+                        <button onClick={() => setShowArchived(v => !v)}
+                          style={{ background: 'none', border: 'none', fontSize: 12, color: showArchived ? '#a78bfa' : 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '4px 8px', fontWeight: 600 }}>
+                          {showArchived ? '← Назад' : 'Архив'}
+                        </button>
+                      </div>
                     </div>
                     <div style={{ padding: '0 12px 8px', flexShrink: 0 }}>
                       <input value={chatSearch} onChange={e => setChatSearch(e.target.value)}
@@ -3688,10 +3949,13 @@ export default function App() {
                             >
                               <div style={{ position: 'relative' }}>
                                 <Avatar url={chat.avatarUrl} name={chat.name} size={46} />
-                                <div className={chat.status === 'online' ? 'online-status' : 'offline-status'} />
+                                {chat.isGroup
+                                  ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: '#7c3aed', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
+                                  : <div className={chat.status === 'online' ? 'online-status' : 'offline-status'} />
+                                }
                               </div>
                               <div className="dmMeta">
-                                <div className="dmName">{safeText(chat.name)}</div>
+                                <div className="dmName">{safeText(chat.name)}{chat.isGroup && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginLeft: 5 }}>{chat.memberCount} чел.</span>}</div>
                                 <div className="dmSnippet">{safeText(chat.lastMessage || 'Нет сообщений')}</div>
                               </div>
                               <div className="dmRight">
@@ -4306,7 +4570,7 @@ export default function App() {
                     borderColor: "rgba(255,100,100,0.3)",
                   }}
                   onClick={async () => {
-                    if (!window.confirm(`Заблокировать ${viewingUser.name}?`))
+                    if (!await showConfirm(`${viewingUser.name} не сможет видеть ваши посты и писать вам.`, `Заблокировать ${viewingUser.name}?`))
                       return;
                     const res = await blocksService.block(
                       user.id,
@@ -4396,27 +4660,37 @@ export default function App() {
                       border: `1px solid ${n.read ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.14)"}`,
                       cursor: "pointer",
                     }}
-                    onClick={() => n.from_user && openProfile(n.from_user)}
+                    onClick={async () => {
+                      if (n.type === 'message' && n.entity_id) {
+                        setActiveTab('chats');
+                        setActiveChatId(n.entity_id);
+                      } else if ((n.type === 'like' || n.type === 'comment' || n.type === 'mention') && n.entity_id) {
+                        const post = await postsService.getById?.(n.entity_id).catch(() => null)
+                        if (post) { setSharePost(null); }
+                        notificationService.showNotification('Пост', 'Открытие постов по уведомлению скоро появится', 'info')
+                      } else if (n.from_user) {
+                        openProfile(n.from_user)
+                      }
+                    }}
                   >
-                    <Avatar
-                      url={n.from_user?.avatar_url}
-                      name={n.from_user?.name}
-                      size={40}
-                    />
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <Avatar url={n.from_user?.avatar_url} name={n.from_user?.name} size={40} />
+                      <div style={{ position: 'absolute', bottom: -2, right: -2, fontSize: 14, lineHeight: 1 }}>
+                        {n.type === 'like' && '❤️'}
+                        {n.type === 'comment' && '💬'}
+                        {n.type === 'follow' && '👤'}
+                        {n.type === 'message' && '💌'}
+                        {n.type === 'mention' && '@'}
+                      </div>
+                    </div>
                     <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 600,
-                          marginBottom: 2,
-                        }}
-                      >
+                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
                         <b>{n.from_user?.name}</b>
-                        {n.type === "like" && " лайкнул(-а) ваш пост"}
-                        {n.type === "comment" &&
-                          " прокомментировал(-а) ваш пост"}
-                        {n.type === "follow" && " подписался(-ась) на вас"}
-                        {n.type === "message" && " написал(-а) вам"}
+                        {n.type === "like" && " оценил ваш пост"}
+                        {n.type === "comment" && " прокомментировал ваш пост"}
+                        {n.type === "follow" && " подписался на вас"}
+                        {n.type === "message" && " написал вам"}
+                        {n.type === "mention" && " упомянул вас"}
                       </div>
                       {n.entity_preview && (
                         <div
@@ -4694,7 +4968,10 @@ export default function App() {
               gap: 10,
             }}
           >
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Переслать в...</div>
+            <div style={{ fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              Переслать в...
+              {forwardLoading && <div style={{ width: 16, height: 16, border: '2px solid #a78bfa', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />}
+            </div>
             <div
               style={{
                 fontSize: 12,
@@ -4723,30 +5000,42 @@ export default function App() {
                   <div
                     key={c.id}
                     onClick={async () => {
-                      setForwardMsg(null);
-                      if (forwardMsg.type === "image" && forwardMsg.media_url) {
-                        const res = await fetch(forwardMsg.media_url);
-                        const blob = await res.blob();
-                        const file = new File([blob], "forwarded.jpg", {
-                          type: blob.type,
-                        });
-                        await chatService.sendImage(c.id, user.id, file);
-                      } else {
-                        await chatService.sendMessage(
-                          c.id,
-                          user.id,
-                          forwardMsg.content,
-                        );
+                      if (forwardLoading) return;
+                      setForwardLoading(true);
+                      try {
+                        const msg = forwardMsg;
+                        if (msg.type === "image" && msg.media_url) {
+                          try {
+                            const res = await fetch(msg.media_url);
+                            const blob = await res.blob();
+                            const file = new File([blob], "forwarded.jpg", { type: "image/jpeg" });
+                            await chatService.sendImage(c.id, user.id, file);
+                          } catch {
+                            await chatService.sendMessage(c.id, user.id, `📷 ${msg.media_url}`);
+                          }
+                        } else if (msg.type === "voice" && msg.media_url) {
+                          try {
+                            const res = await fetch(msg.media_url);
+                            const blob = await res.blob();
+                            const file = new File([blob], "forwarded.ogg", { type: "audio/ogg" });
+                            await chatService.sendVoice(c.id, user.id, file);
+                          } catch {
+                            await chatService.sendMessage(c.id, user.id, "🎤 Голосовое сообщение");
+                          }
+                        } else {
+                          const text = msg.content?.trim() || "📎 Вложение";
+                          await chatService.sendMessage(c.id, user.id, text);
+                        }
+                        const updated = await chatService.getChats(user.id);
+                        setChats(updated);
+                        setActiveChatId(c.id);
+                        setActiveTab("chats");
+                        setForwardMsg(null);
+                        notificationService.showNotification("Переслано", `В чат с ${c.name}`, "success");
+                      } catch {
+                        notificationService.showNotification("Ошибка", "Не удалось переслать", "error");
                       }
-                      const updated = await chatService.getChats(user.id);
-                      setChats(updated);
-                      setActiveChatId(c.id);
-                      setActiveTab("chats");
-                      notificationService.showNotification(
-                        "Переслано",
-                        `Сообщение переслано в чат с ${c.name}`,
-                        "success",
-                      );
+                      setForwardLoading(false);
                     }}
                     style={{
                       display: "flex",
@@ -4769,6 +5058,74 @@ export default function App() {
           </div>
         </div>
       )}
+      {createGroupOpen && (
+        <CreateGroupModal
+          currentUser={user}
+          friends={friends}
+          onClose={() => setCreateGroupOpen(false)}
+          onCreate={async (name, memberIds) => {
+            const res = await chatService.createGroupChat(user.id, memberIds, name);
+            if (res.success) {
+              setCreateGroupOpen(false);
+              const updated = await chatService.getChats(user.id);
+              setChats(updated);
+              setActiveChatId(res.chatId);
+            } else {
+              notificationService.showNotification('Ошибка', res.error, 'error');
+            }
+          }}
+        />
+      )}
     </>
+  );
+}
+
+// ─── CreateGroupModal ─────────────────────────────────────────────────────────
+function CreateGroupModal({ currentUser, friends, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [selected, setSelected] = useState([]);
+  const [creating, setCreating] = useState(false);
+
+  function toggle(id) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  async function handleCreate() {
+    if (!name.trim() || selected.length < 1) return;
+    setCreating(true);
+    await onCreate(name.trim(), selected);
+    setCreating(false);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9997, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#15152a', borderRadius: '20px 20px 0 0', padding: 20, width: '100%', maxWidth: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontWeight: 700, fontSize: 17 }}>Новая группа</div>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Название группы"
+          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 14px', color: 'white', fontSize: 14, outline: 'none' }} />
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Участники ({selected.length})</div>
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {friends.length === 0
+            ? <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Нет друзей для добавления</div>
+            : friends.map(f => (
+              <div key={f.id} onClick={() => toggle(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 4px', cursor: 'pointer', borderRadius: 10, background: selected.includes(f.id) ? 'rgba(124,58,237,0.15)' : 'transparent' }}>
+                <Avatar url={f.avatar_url} name={f.name} size={38} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{f.name}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{f.username}</div>
+                </div>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${selected.includes(f.id) ? '#7c3aed' : 'rgba(255,255,255,0.2)'}`, background: selected.includes(f.id) ? '#7c3aed' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {selected.includes(f.id) && <span style={{ color: 'white', fontSize: 13 }}>✓</span>}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+        <button onClick={handleCreate} disabled={!name.trim() || selected.length < 1 || creating}
+          style={{ padding: '12px', borderRadius: 12, background: name.trim() && selected.length > 0 ? '#7c3aed' : 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+          {creating ? 'Создаём...' : `Создать группу (${selected.length + 1} чел.)`}
+        </button>
+      </div>
+    </div>
   );
 }

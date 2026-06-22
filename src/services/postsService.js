@@ -156,6 +156,20 @@ export class PostsService {
     }
   }
 
+  async getLikedPostIds(userId, postIds) {
+    if (!userId || !postIds?.length) return new Set()
+    const { data } = await supabase.from('post_likes')
+      .select('post_id').eq('user_id', userId).in('post_id', postIds)
+    return new Set((data || []).map(r => r.post_id))
+  }
+
+  async getRepostedPostIds(userId, postIds) {
+    if (!userId || !postIds?.length) return new Set()
+    const { data } = await supabase.from('posts')
+      .select('repost_of_id').eq('author_id', userId).in('repost_of_id', postIds)
+    return new Set((data || []).map(r => r.repost_of_id).filter(Boolean))
+  }
+
   async getLikeCount(postId) {
     const { count } = await supabase
       .from("post_likes")
@@ -220,6 +234,45 @@ export class PostsService {
     const { error } = await supabase.from("posts").delete().eq("id", postId);
     if (error) return { success: false, error: error.message };
     return { success: true };
+  }
+
+  async updatePost(postId, content) {
+    const text = content?.trim?.()
+    if (!text) return { success: false, error: 'Empty' }
+    const { error } = await supabase.from('posts').update({ content: text }).eq('id', postId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }
+
+  async deleteComment(commentId) {
+    const { error } = await supabase.from('post_comments').delete().eq('id', commentId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }
+
+  async editComment(commentId, content) {
+    const text = content?.trim?.()
+    if (!text) return { success: false, error: 'Empty' }
+    const { error } = await supabase.from('post_comments').update({ content: text }).eq('id', commentId)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }
+
+  async getLikes(postId) {
+    const { data } = await supabase.from('post_likes')
+      .select('user_id, user:profiles!post_likes_user_id_fkey(id, name, username, avatar_url)')
+      .eq('post_id', postId).order('created_at', { ascending: false })
+    return (data || []).map(r => r.user).filter(Boolean)
+  }
+
+  async getPostsByUserPaged(userId, limit = 15, offset = 0) {
+    const { data, error } = await supabase.from('posts')
+      .select(`id, author_id, wall_owner_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url), post_comments(count)`)
+      .or(`author_id.eq.${userId},wall_owner_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (error) return []
+    return (data || []).map(p => ({ ...p, _commentCount: p.post_comments?.[0]?.count ?? 0 }))
   }
 
   async addComment(postId, userId, content, postAuthorId = null) {

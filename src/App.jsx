@@ -132,7 +132,27 @@ function formatRelative(ts) {
   if (diff < 3600000) return `${Math.floor(diff / 60000)} мин назад`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)} ч назад`;
   const d = new Date(ts);
-  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+  const now = new Date();
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const day = String(d.getDate()).padStart(2, "0");
+  const mon = String(d.getMonth() + 1).padStart(2, "0");
+  return sameYear ? `${day}.${mon}` : `${day}.${mon}.${d.getFullYear()}`;
+}
+
+function formatDateLabel(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = today - day;
+  if (diff === 0) return "Сегодня";
+  if (diff === 86400000) return "Вчера";
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const months = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+  return sameYear
+    ? `${d.getDate()} ${months[d.getMonth()]}`
+    : `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 const COLORS = [
@@ -314,6 +334,7 @@ function PostCard({
   const [deleted, setDeleted] = useState(false);
   const [repostOriginal, setRepostOriginal] = useState(null);
   const [repostDone, setRepostDone] = useState(post._reposted || false);
+  const [repostLoading, setRepostLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(post.content || '');
   const [editSaving, setEditSaving] = useState(false);
@@ -344,9 +365,11 @@ function PostCard({
   }
 
   async function handleRepost() {
-    if (!currentUser || repostDone) return;
+    if (!currentUser || repostDone || repostLoading) return;
     if (!await showConfirm("Добавить этот пост на свою стену?", "Репост")) return;
+    setRepostLoading(true);
     const res = await postsService.repost(currentUser.id, post.id);
+    setRepostLoading(false);
     if (res.success) {
       setRepostDone(true);
       onReposted?.();
@@ -729,7 +752,8 @@ function PostCard({
                 background: "transparent",
                 border: "none",
                 color: repostDone ? "#a78bfa" : "rgba(255,255,255,0.5)",
-                cursor: "pointer",
+                cursor: repostLoading ? 'not-allowed' : 'pointer',
+                opacity: repostLoading ? 0.5 : 1,
                 padding: "6px 10px",
                 borderRadius: 8,
                 fontSize: 13,
@@ -1107,6 +1131,7 @@ function ProfileWall({
   );
   const isMe = Boolean(currentUser?.id) && currentUser.id === profileUser?.id;
   const canPost = isMe || isFriendOfUser;
+  const isPrivateLocked = !isMe && profileUser?.is_private && !isFriendOfUser;
 
   useEffect(() => {
     setLocalBannerUrl(profileUser?.banner_url || "");
@@ -1438,6 +1463,14 @@ function ProfileWall({
         </div>
       </div>
 
+      {isPrivateLocked ? (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: 'rgba(255,255,255,0.35)' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6, color: 'rgba(255,255,255,0.7)' }}>Закрытый профиль</div>
+          <div style={{ fontSize: 14, lineHeight: 1.5 }}>Подпишитесь, чтобы видеть посты {profileUser?.name}</div>
+        </div>
+      ) : (
+      <>
       {canPost && currentUser?.id && (
         <CreatePost
           user={currentUser}
@@ -1615,11 +1648,14 @@ function ProfileWall({
           </div>
         </div>
       )}
+      </>
+      )}
     </div>
   );
 }
 function SettingsPanel({ user, onUserUpdate, onLogout }) {
   const [name, setName] = useState(user?.name || "");
+  const [username, setUsername] = useState(user?.username || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState(null);
@@ -1636,11 +1672,13 @@ function SettingsPanel({ user, onUserUpdate, onLogout }) {
     if (!name.trim()) return;
     setProfileSaving(true);
     setProfileMsg(null);
-    const res = await authService.updateProfile(user.id, { name, bio });
+    const updates = { name, bio };
+    if (username.trim() && username.trim() !== user?.username) updates.username = username.trim();
+    const res = await authService.updateProfile(user.id, updates);
     setProfileSaving(false);
     if (res.success) {
       setProfileMsg({ ok: true, text: "Сохранено!" });
-      onUserUpdate?.({ ...user, name: res.user.name, bio: res.user.bio || "" });
+      onUserUpdate?.({ ...user, name: res.user.name, bio: res.user.bio || "", username: res.user.username });
     } else {
       setProfileMsg({ ok: false, text: res.error });
     }
@@ -1714,12 +1752,15 @@ function SettingsPanel({ user, onUserUpdate, onLogout }) {
         >
           <div>
             <label style={label}>Имя</label>
-            <input
-              style={inp}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ваше имя"
-            />
+            <input style={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ваше имя" />
+          </div>
+          <div>
+            <label style={label}>Username</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.35)', fontSize: 14, pointerEvents: 'none' }}>@</span>
+              <input style={{ ...inp, paddingLeft: 26 }} value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase())} placeholder="username" />
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>Только латиница, цифры и _</div>
           </div>
           <div>
             <label style={label}>О себе</label>
@@ -2396,7 +2437,8 @@ function LinkPreview({ url }) {
     if (cached) { try { setMeta(JSON.parse(cached)) } catch {} return }
 
     const proxyUrl = `https://allorigins.win/get?disableCache=true&url=${encodeURIComponent(url)}`
-    fetch(proxyUrl, { signal: AbortSignal.timeout(5000) })
+    const _ctrl = new AbortController(); setTimeout(() => _ctrl.abort(), 5000);
+    fetch(proxyUrl, { signal: _ctrl.signal })
       .then(r => r.json())
       .then(data => {
         if (cancelled) return
@@ -2436,9 +2478,63 @@ function LinkPreview({ url }) {
 
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
+function VoicePlayer({ src, isMe }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  function toggle() {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); }
+    else { a.play(); setPlaying(true); }
+  }
+
+  function fmt(s) {
+    const t = Math.floor(s || 0);
+    return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  }
+
+  const accent = isMe ? 'rgba(255,255,255,0.9)' : '#a78bfa';
+  const trackBg = isMe ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 180, maxWidth: 240 }}>
+      <audio ref={audioRef} src={src}
+        onTimeUpdate={e => { const a = e.target; setCurrentTime(a.currentTime); setProgress(a.duration ? a.currentTime / a.duration : 0); }}
+        onLoadedMetadata={e => setDuration(e.target.duration)}
+        onEnded={() => { setPlaying(false); setProgress(0); setCurrentTime(0); if (audioRef.current) audioRef.current.currentTime = 0; }}
+      />
+      <button onClick={toggle} style={{ width: 34, height: 34, borderRadius: '50%', background: accent, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isMe ? '#1a1a2e' : 'white' }}>
+        {playing
+          ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+        }
+      </button>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ position: 'relative', height: 4, borderRadius: 2, background: trackBg, cursor: 'pointer' }}
+          onClick={e => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            if (audioRef.current?.duration) { audioRef.current.currentTime = pct * audioRef.current.duration; setProgress(pct); }
+          }}>
+          <div style={{ height: '100%', borderRadius: 2, background: accent, width: `${progress * 100}%`, transition: 'width 0.1s linear' }} />
+        </div>
+        <div style={{ fontSize: 10, color: isMe ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.4)', display: 'flex', justifyContent: 'space-between' }}>
+          <span>{fmt(currentTime)}</span>
+          <span>{fmt(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({
   msg,
   isMe,
+  isGroup,
   searchQuery,
   onEdit,
   onDelete,
@@ -2456,6 +2552,18 @@ function MessageBubble({
   const [editText, setEditText] = useState(msg.content || "");
   const [reactions, setReactions] = useState(msg._reactions || []);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [swipeX, setSwipeX] = useState(0);
+  const touchStartX = useRef(0);
+
+  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
+  function onTouchMove(e) {
+    const dx = e.touches[0].clientX - touchStartX.current;
+    if (dx > 0 && dx < 80) setSwipeX(dx);
+  }
+  function onTouchEnd() {
+    if (swipeX > 50) onReply?.(msg);
+    setSwipeX(0);
+  }
 
   async function saveEdit() {
     if (!editText.trim()) return;
@@ -2508,12 +2616,21 @@ function MessageBubble({
     <div
       className={`msgRow ${isMe ? "me" : "them"}`}
       onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => {
-        setHover(false);
-        setShowEmoji(false);
-      }}
-      style={{ position: "relative" }}
+      onMouseLeave={() => { setHover(false); setShowEmoji(false); }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      style={{ position: "relative", alignItems: 'flex-end', transform: swipeX ? `translateX(${swipeX}px)` : undefined, transition: swipeX ? 'none' : 'transform 0.2s ease' }}
     >
+      {swipeX > 20 && (
+        <div style={{ position: 'absolute', left: -32, top: '50%', transform: 'translateY(-50%)', opacity: swipeX / 80, color: 'rgba(255,255,255,0.6)', fontSize: 18, pointerEvents: 'none' }}>↩</div>
+      )}
+      {isGroup && !isMe && (
+        <div style={{ flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, marginRight: 6, cursor: 'pointer' }}
+          onClick={() => onUserClick?.(msg.sender)}>
+          <Avatar url={msg.sender?.avatar_url} name={msg.sender?.name} size={28} />
+        </div>
+      )}
       {hover && !editing && (
         <div style={{ position: 'absolute', bottom: 'calc(100% + 4px)', [isMe ? 'right' : 'left']: 0, display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 4, zIndex: 50 }}>
           {/* Быстрые реакции */}
@@ -2569,11 +2686,11 @@ function MessageBubble({
         </div>
       )}
       <div className="msgBubble">
-        {!isMe && msg.sender?.name && (
+        {!isMe && isGroup && msg.sender?.name && (
           <div
             className="msgSender"
             onClick={() => onUserClick?.(msg.sender)}
-            style={{ cursor: onUserClick ? "pointer" : undefined }}
+            style={{ cursor: 'pointer', color: COLORS[msg.sender.name.charCodeAt(0) % COLORS.length], fontWeight: 700, fontSize: 12, marginBottom: 3 }}
           >
             {msg.sender.name}
           </div>
@@ -2604,10 +2721,7 @@ function MessageBubble({
           </div>
         )}
         {msg.type === "voice" && msg.media_url ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color: '#a78bfa', flexShrink: 0 }}><rect x="9" y="2" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-            <audio controls src={msg.media_url} style={{ height: 32, maxWidth: 200 }} />
-          </div>
+          <VoicePlayer src={msg.media_url} isMe={isMe} />
         ) : msg.type === "image" && msg.media_url ? (
           <img
             src={msg.media_url}
@@ -2850,6 +2964,7 @@ export default function App() {
 
   // share
   const [sharePost, setSharePost] = useState(null);
+  const [focusPost, setFocusPost] = useState(null);
 
   // далее
   const [forwardMsg, setForwardMsg] = useState(null);
@@ -2857,6 +2972,7 @@ export default function App() {
 
   // reply
   const [replyTo, setReplyTo] = useState(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   // обои чатов
   const [wallpaperPickerOpen, setWallpaperPickerOpen] = useState(false)
@@ -3483,6 +3599,27 @@ export default function App() {
         />
       )}
 
+      {focusPost && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'rgba(0,0,0,0.8)', overflowY: 'auto', padding: '20px 0 40px' }}
+          onClick={() => setFocusPost(null)}>
+          <div style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '0 4px' }}>
+              <button onClick={() => setFocusPost(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>←</button>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>Пост</span>
+            </div>
+            <PostCard
+              post={focusPost}
+              currentUser={user}
+              onShareClick={setSharePost}
+              onUserClick={(u) => { setFocusPost(null); openProfile(u); }}
+              onDelete={() => setFocusPost(null)}
+              onNotify={() => {}}
+              onMentionClick={(u) => { setFocusPost(null); openProfile(u); }}
+            />
+          </div>
+        </div>
+      )}
+
       <div
         className="app"
         style={{ display: user ? "grid" : "block", minHeight: "100vh" }}
@@ -3989,24 +4126,39 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  displayMessages.map((msg) => (
-                    <MessageBubble
-                      key={msg.id}
-                      msg={msg}
-                      isMe={msg.sender_id === user.id}
-                      searchQuery={msgSearchQuery}
-                      onEdit={handleEditMessage}
-                      onDelete={handleDeleteMessage}
-                      onDeleteForAll={handleDeleteForAll}
-                      onUserClick={openProfile}
-                      onForward={setForwardMsg}
-                      onReply={setReplyTo}
-                      currentUserId={user.id}
-                      onMentionClick={handleMentionClick}
-                      onPin={handlePinMessage}
-                      isPinned={pinnedMsg?.id === msg.id}
-                    />
-                  ))
+                  (() => {
+                    let lastDateLabel = null;
+                    return displayMessages.map((msg) => {
+                      const label = formatDateLabel(msg.created_at);
+                      const showLabel = label !== lastDateLabel;
+                      lastDateLabel = label;
+                      return (
+                        <React.Fragment key={msg.id}>
+                          {showLabel && (
+                            <div style={{ textAlign: 'center', margin: '10px 0 6px', pointerEvents: 'none' }}>
+                              <span style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: '3px 12px', fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>{label}</span>
+                            </div>
+                          )}
+                          <MessageBubble
+                            msg={msg}
+                            isMe={msg.sender_id === user.id}
+                            isGroup={activeChat?.isGroup}
+                            searchQuery={msgSearchQuery}
+                            onEdit={handleEditMessage}
+                            onDelete={handleDeleteMessage}
+                            onDeleteForAll={handleDeleteForAll}
+                            onUserClick={openProfile}
+                            onForward={setForwardMsg}
+                            onReply={setReplyTo}
+                            currentUserId={user.id}
+                            onMentionClick={handleMentionClick}
+                            onPin={handlePinMessage}
+                            isPinned={pinnedMsg?.id === msg.id}
+                          />
+                        </React.Fragment>
+                      );
+                    });
+                  })()
                 )}
               </div>
 
@@ -4066,8 +4218,31 @@ export default function App() {
                   </button>
                 </div>
               )}
+              {emojiPickerOpen && (
+                <div style={{ background: 'rgba(18,18,28,0.99)', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 12px' }}>
+                  {[
+                    ['😀','😂','🥰','😍','🤔','😊','😎','😭','😅','🥺','😏','😘','🤣','😤','🙂','🤗'],
+                    ['👍','👎','👏','🙏','💪','🤝','🫶','✌️','🤞','👀','💀','🫡','🤦','🤷','🫠','😶'],
+                    ['❤️','🔥','💯','🎉','✨','💥','🥳','🎊','💔','💕','💬','👻','🍕','🍺','🎮','🚀'],
+                  ].map((row, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                      {row.map(e => (
+                        <button key={e} onClick={() => { setMessageText(t => t + e); setEmojiPickerOpen(false); }}
+                          style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', padding: '3px 4px', borderRadius: 6, lineHeight: 1 }}
+                          onMouseEnter={ev => ev.currentTarget.style.background='rgba(255,255,255,0.1)'}
+                          onMouseLeave={ev => ev.currentTarget.style.background='none'}>
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
               <footer className="chatComposer">
                 <div className="composer-actions">
+                  <button type="button" className="clipBtn" onClick={() => setEmojiPickerOpen(p => !p)} title="Эмодзи" style={{ opacity: activeChat ? 1 : 0.4 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><path d="M8.5 14.5c.9 1.5 6.1 1.5 7 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  </button>
                   <label
                     className="clipBtn"
                     htmlFor={activeChat ? "chatImageInput" : undefined}
@@ -4668,11 +4843,10 @@ export default function App() {
                         setActiveTab('chats');
                         setActiveChatId(n.entity_id);
                       } else if ((n.type === 'like' || n.type === 'comment' || n.type === 'mention') && n.entity_id) {
-                        const post = await postsService.getById?.(n.entity_id).catch(() => null)
-                        if (post) { setSharePost(null); }
-                        notificationService.showNotification('Пост', 'Открытие постов по уведомлению скоро появится', 'info')
-                      } else if (n.from_user) {
-                        openProfile(n.from_user)
+                        const post = await postsService.getById(n.entity_id);
+                        if (post) { setFocusPost(post); } else if (n.from_user) { openProfile(n.from_user); }
+                      } else if (n.type === 'follow' && n.from_user) {
+                        openProfile(n.from_user);
                       }
                     }}
                   >
@@ -5258,6 +5432,15 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
             )}
           </>
         )}
+
+        <button onClick={async () => {
+          if (!await showConfirm('Вы покинете группу и больше не будете видеть её сообщения.', 'Покинуть группу?')) return;
+          const res = await chatService.removeGroupMember(chat.id, currentUser.id);
+          if (res.success) { onUpdated?.(); onClose(); }
+          else notificationService.showNotification('Ошибка', res.error, 'error');
+        }} style={{ marginTop: 14, padding: '11px', borderRadius: 12, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          Покинуть группу
+        </button>
       </div>
     </div>
   );

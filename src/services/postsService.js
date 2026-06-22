@@ -32,6 +32,20 @@ export class PostsService {
     return data || [];
   }
 
+  async getById(postId) {
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select(`id, author_id, wall_owner_id, content, media_url, created_at, repost_of_id,
+          author:profiles!posts_author_id_fkey(id, username, name, avatar_url),
+          post_comments(count)`)
+        .eq('id', postId)
+        .single()
+      if (error) return null
+      return { ...data, _commentCount: data.post_comments?.[0]?.count ?? 0 }
+    } catch { return null }
+  }
+
   async compressImage(file, maxSide = 1080, quality = 0.85) {
     return new Promise((resolve) => {
       const img = new Image();

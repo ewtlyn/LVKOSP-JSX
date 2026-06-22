@@ -4,8 +4,8 @@ self.addEventListener('push', event => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'LVKOSP', {
       body: data.body || '',
-      icon: '/LVKOSP-JSX/vite.svg',
-      badge: '/LVKOSP-JSX/vite.svg',
+      icon: '/vite.svg',
+      badge: '/vite.svg',
       data: { url: data.url || '/' },
     })
   )

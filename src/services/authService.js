@@ -388,10 +388,16 @@ export class AuthService {
 
   async updateProfile(userId, updates) {
     try {
-      const safe = {
-        name: updates?.name?.trim?.() ?? undefined,
-        bio: updates?.bio?.trim?.() ?? undefined,
-      };
+      const safe = {};
+      if (updates?.name?.trim?.()) safe.name = updates.name.trim();
+      if (updates?.bio !== undefined) safe.bio = updates.bio?.trim?.() ?? '';
+      if (updates?.username?.trim?.()) {
+        const uname = updates.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+        if (uname.length < 3) return { success: false, error: 'Username минимум 3 символа' };
+        const { data: existing } = await supabase.from('profiles').select('id').eq('username', uname).neq('id', userId).maybeSingle();
+        if (existing) return { success: false, error: 'Username уже занят' };
+        safe.username = uname;
+      }
       const { data, error } = await supabase
         .from("profiles")
         .update(safe)
@@ -400,10 +406,7 @@ export class AuthService {
         .single();
       if (error) return { success: false, error: error.message };
       const user = JSON.parse(localStorage.getItem("lvkosp_user") || "{}");
-      localStorage.setItem(
-        "lvkosp_user",
-        JSON.stringify({ ...user, name: data.name, bio: data.bio || "" }),
-      );
+      localStorage.setItem("lvkosp_user", JSON.stringify({ ...user, name: data.name, bio: data.bio || "", username: data.username }));
       return { success: true, user: data };
     } catch (e) {
       return { success: false, error: e?.message || "Profile update failed" };

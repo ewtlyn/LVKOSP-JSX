@@ -69,6 +69,35 @@ function ImageLightbox() {
   );
 }
 
+function LoadingScreen({ onRetry }) {
+  const [seconds, setSeconds] = useState(0);
+  const [showSlow, setShowSlow] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setSeconds(s => s + 1), 1000);
+    const slow = setTimeout(() => setShowSlow(true), 8000);
+    return () => { clearInterval(t); clearTimeout(slow); };
+  }, []);
+  return (
+    <div style={{ background: '#0b0b0b', height: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)' }}>
+      <div id="notificationContainer" />
+      <div style={{ textAlign: 'center', padding: 24 }}>
+        <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: 900, fontSize: 26, color: 'white' }}>L</div>
+        <div style={{ fontSize: 15, marginBottom: 6 }}>Загрузка...</div>
+        {showSlow && (
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginBottom: 16, maxWidth: 240, lineHeight: 1.5 }}>
+            Медленное соединение. Сервер запускается, подождите ещё немного...
+          </div>
+        )}
+        {seconds >= 20 && (
+          <button onClick={onRetry} style={{ marginTop: 8, padding: '10px 24px', background: '#7c3aed', border: 'none', borderRadius: 12, color: 'white', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}>
+            Повторить
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatLastSeen(status, lastSeen) {
   if (status === 'online') return 'В сети';
   if (!lastSeen) return 'Не в сети';
@@ -2729,6 +2758,7 @@ export default function App() {
   const chatsRef = useRef(chats);
   const [showArchived, setShowArchived] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
@@ -3424,41 +3454,7 @@ export default function App() {
   }, [activeTab, user?.id, chats.length]);
 
   if (!authChecked)
-    return (
-      <div
-        style={{
-          background: "#0b0b0b",
-          height: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "rgba(255,255,255,0.5)",
-        }}
-      >
-        <div id="notificationContainer" />
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 16,
-              background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px",
-              fontWeight: 900,
-              fontSize: 26,
-              color: "white",
-              letterSpacing: -1,
-            }}
-          >
-            L
-          </div>
-          <div>Загрузка...</div>
-        </div>
-      </div>
-    );
+    return <LoadingScreen onRetry={() => { setAuthChecked(false); authService.getCurrentUser().then(res => { if (res.success) { setUser(res.user); setAuthModalOpen(false); } else { setUser(null); setAuthModalOpen(true); } setAuthChecked(true); }) }} />;
 
   return (
     <>
@@ -3755,6 +3751,13 @@ export default function App() {
                 <div className="chatHeader__right">
                   {activeChat && (
                     <>
+                      {activeChat.isGroup && (
+                        <button className="iconBtn" title="Настройки группы"
+                          style={{ color: groupSettingsOpen ? '#a78bfa' : undefined }}
+                          onClick={() => setGroupSettingsOpen(v => !v)}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="1.6"/></svg>
+                        </button>
+                      )}
                       <button className="iconBtn" title="Обои чата"
                         style={{ color: chatWallpaper ? 'rgba(167,139,250,0.9)' : undefined }}
                         onClick={() => setWallpaperPickerOpen(v => !v)}>
@@ -5076,7 +5079,187 @@ export default function App() {
           }}
         />
       )}
+      {groupSettingsOpen && activeChat?.isGroup && (
+        <GroupSettingsModal
+          chat={activeChat}
+          currentUser={user}
+          friends={friends}
+          onClose={() => setGroupSettingsOpen(false)}
+          onUpdated={async () => {
+            const updated = await chatService.getChats(user.id);
+            setChats(updated);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+// ─── GroupSettingsModal ───────────────────────────────────────────────────────
+function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) {
+  const [members, setMembers] = useState([]);
+  const [tab, setTab] = useState('members'); // 'members' | 'add'
+  const [toAdd, setToAdd] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [groupName, setGroupName] = useState(chat.name || '');
+  const [editingName, setEditingName] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const avatarInputRef = useRef(null);
+
+  useEffect(() => {
+    chatService.getGroupMembers(chat.id).then(setMembers);
+  }, [chat.id]);
+
+  const memberIds = new Set(members.map(m => m.id));
+  const addableFriends = friends.filter(f => !memberIds.has(f.id));
+
+  function toggleAdd(id) {
+    setToAdd(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  async function handleAdd() {
+    if (!toAdd.length) return;
+    setAdding(true);
+    const res = await chatService.addGroupMembers(chat.id, toAdd);
+    if (res.success) {
+      const updated = await chatService.getGroupMembers(chat.id);
+      setMembers(updated);
+      setToAdd([]);
+      setTab('members');
+      onUpdated?.();
+      notificationService.showNotification('Готово', 'Участники добавлены', 'success');
+    } else {
+      notificationService.showNotification('Ошибка', res.error, 'error');
+    }
+    setAdding(false);
+  }
+
+  async function handleRemove(userId) {
+    if (!await showConfirm('Удалить участника из группы?', 'Удалить')) return;
+    const res = await chatService.removeGroupMember(chat.id, userId);
+    if (res.success) {
+      setMembers(prev => prev.filter(m => m.id !== userId));
+      onUpdated?.();
+    }
+  }
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    const res = await chatService.updateGroupAvatar(chat.id, file);
+    if (res.success) {
+      onUpdated?.();
+      notificationService.showNotification('Готово', 'Фото группы обновлено', 'success');
+    } else {
+      notificationService.showNotification('Ошибка', res.error, 'error');
+    }
+    setAvatarUploading(false);
+  }
+
+  async function handleSaveName() {
+    if (!groupName.trim()) return;
+    setSavingName(true);
+    const res = await chatService.updateGroupName(chat.id, groupName.trim());
+    if (res.success) { setEditingName(false); onUpdated?.(); }
+    else notificationService.showNotification('Ошибка', res.error, 'error');
+    setSavingName(false);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9997, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#15152a', borderRadius: '20px 20px 0 0', padding: '20px 20px 32px', width: '100%', maxWidth: 480, maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+        {/* Шапка */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+          {/* Аватар группы */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <Avatar url={chat.avatarUrl} name={chat.name} size={56} />
+            <button onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: 'white' }}>
+              {avatarUploading ? '...' : '📷'}
+            </button>
+            <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
+          </div>
+          {/* Название */}
+          <div style={{ flex: 1 }}>
+            {editingName ? (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', color: 'white', fontSize: 15, fontWeight: 700 }} autoFocus />
+                <button onClick={handleSaveName} disabled={savingName} style={{ background: '#7c3aed', border: 'none', borderRadius: 10, color: 'white', padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>{savingName ? '...' : '✓'}</button>
+                <button onClick={() => setEditingName(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 10, color: 'white', padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>✕</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 17 }}>{chat.name}</div>
+                <button onClick={() => setEditingName(true)} style={{ background: 'none', border: 'none', color: 'rgba(160,160,255,0.6)', cursor: 'pointer', fontSize: 14, padding: 2 }}>✏️</button>
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{members.length} участников</div>
+          </div>
+        </div>
+
+        {/* Табы */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+          {[['members', 'Участники'], ['add', `+ Добавить (${addableFriends.length})`]].map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              style={{ flex: 1, padding: '7px 0', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: tab === key ? '#7c3aed' : 'rgba(255,255,255,0.07)', color: 'white' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Список участников */}
+        {tab === 'members' && (
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {members.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px' }}>
+                <Avatar url={m.avatar_url} name={m.name} size={38} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{m.name}{m.id === currentUser?.id && <span style={{ fontSize: 11, color: '#a78bfa', marginLeft: 6 }}>вы</span>}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{m.username}</div>
+                </div>
+                {m.id !== currentUser?.id && (
+                  <button onClick={() => handleRemove(m.id)} style={{ background: 'rgba(255,80,80,0.12)', border: 'none', borderRadius: 8, color: 'rgba(255,100,100,0.8)', cursor: 'pointer', padding: '5px 10px', fontSize: 12 }}>Удалить</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Добавить участников */}
+        {tab === 'add' && (
+          <>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {addableFriends.length === 0
+                ? <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, padding: '16px 0' }}>Все друзья уже в группе</div>
+                : addableFriends.map(f => (
+                  <div key={f.id} onClick={() => toggleAdd(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', cursor: 'pointer', borderRadius: 10, background: toAdd.includes(f.id) ? 'rgba(124,58,237,0.15)' : 'transparent' }}>
+                    <Avatar url={f.avatar_url} name={f.name} size={38} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{f.name}</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{f.username}</div>
+                    </div>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${toAdd.includes(f.id) ? '#7c3aed' : 'rgba(255,255,255,0.2)'}`, background: toAdd.includes(f.id) ? '#7c3aed' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {toAdd.includes(f.id) && <span style={{ color: 'white', fontSize: 13 }}>✓</span>}
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+            {toAdd.length > 0 && (
+              <button onClick={handleAdd} disabled={adding}
+                style={{ marginTop: 12, padding: '12px', borderRadius: 12, background: '#7c3aed', border: 'none', color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                {adding ? 'Добавляем...' : `Добавить ${toAdd.length} чел.`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

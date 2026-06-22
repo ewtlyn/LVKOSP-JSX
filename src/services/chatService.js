@@ -323,6 +323,38 @@ export class ChatService {
     return (data || []).map(r => r.profiles).filter(Boolean);
   }
 
+  async addGroupMembers(chatId, userIds) {
+    const rows = userIds.map(uid => ({
+      chat_id: chatId, user_id: uid,
+      joined_at: new Date().toISOString(), last_read_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from('chat_members').upsert(rows, { onConflict: 'chat_id,user_id', ignoreDuplicates: true });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  }
+
+  async removeGroupMember(chatId, userId) {
+    const { error } = await supabase.from('chat_members').delete().eq('chat_id', chatId).eq('user_id', userId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  }
+
+  async updateGroupAvatar(chatId, file) {
+    const path = `group-avatars/${chatId}/${Date.now()}.jpg`;
+    const { error: upErr } = await supabase.storage.from('post-media').upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) return { success: false, error: upErr.message };
+    const { data: { publicUrl } } = supabase.storage.from('post-media').getPublicUrl(path);
+    const { error } = await supabase.from('chats').update({ group_avatar: publicUrl }).eq('id', chatId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, url: publicUrl };
+  }
+
+  async updateGroupName(chatId, name) {
+    const { error } = await supabase.from('chats').update({ group_name: name }).eq('id', chatId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  }
+
   subscribeToMessages(chatId, onNewMessage, onDeleteMessage) {
     this.unsubscribeFromMessages(chatId);
     const channel = supabase

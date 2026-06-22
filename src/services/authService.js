@@ -116,17 +116,23 @@ function isNetworkError(error) {
   );
 }
 
-async function supabaseRetry(fn, retries = 1, delayMs = 1500) {
+async function supabaseRetry(fn, retries = 2, delayMs = 2000) {
   const timeoutResult = {
     data: null,
     error: { message: "timeout", code: "TIMEOUT" },
   };
   const result = await Promise.race([
     fn(),
-    new Promise((resolve) => setTimeout(() => resolve(timeoutResult), 12000)),
+    new Promise((resolve) => setTimeout(() => resolve(timeoutResult), 20000)),
   ]);
   if (result.error) {
-    if (result.error.code === "TIMEOUT") return result; // не ретраим таймаут
+    if (result.error.code === "TIMEOUT") {
+      if (retries > 0) {
+        await new Promise((r) => setTimeout(r, delayMs));
+        return supabaseRetry(fn, retries - 1, delayMs);
+      }
+      return result;
+    }
     if (isNetworkError(result.error) && retries > 0) {
       await new Promise((r) => setTimeout(r, delayMs));
       return supabaseRetry(fn, retries - 1, delayMs);
@@ -332,12 +338,12 @@ export class AuthService {
         } catch {}
       }
 
-      // Нет кэша — нужен запрос к Supabase (с таймаутом 6 сек)
+      // Нет кэша — нужен запрос к Supabase (с таймаутом 25 сек для медленных сетей)
       const timeout = new Promise((resolve) =>
         setTimeout(
           () =>
-            resolve({ data: null, error: { message: "timeout", code: "" } }),
-          6000,
+            resolve({ data: null, error: { message: "timeout", code: "TIMEOUT" } }),
+          25000,
         ),
       );
       const { data: user, error } = await Promise.race([
@@ -353,6 +359,9 @@ export class AuthService {
 
       if (error) {
         console.error("[getCurrentUser] error:", error);
+        if (error.code === "TIMEOUT") {
+          return { success: false, error: "Медленное соединение. Проверьте интернет и попробуйте снова." };
+        }
         return { success: false, error: "Ошибка соединения" };
       }
 

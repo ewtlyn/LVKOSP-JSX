@@ -881,8 +881,6 @@ function PostCard({
   );
 }
 
-PostCard = React.memo(PostCard);
-
 // ─── CommentItem ───────────────────────────────────────────────────────────────
 function CommentItem({ comment: c, currentUser, onDeleted, onEdited }) {
   const [editMode, setEditMode] = useState(false);
@@ -930,8 +928,6 @@ function CommentItem({ comment: c, currentUser, onDeleted, onEdited }) {
     </div>
   );
 }
-
-CommentItem = React.memo(CommentItem);
 
 // ─── CreatePost ───────────────────────────────────────────────────────────────
 function CreatePost({
@@ -2484,8 +2480,6 @@ function LinkPreview({ url }) {
   )
 }
 
-VoicePlayer = React.memo(VoicePlayer);
-
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
 function VoicePlayer({ src, isMe }) {
@@ -2843,8 +2837,6 @@ function MessageBubble({
     </div>
   );
 }
-
-MessageBubble = React.memo(MessageBubble);
 
 const WALLPAPERS = [
   { id: '', label: 'По умолчанию', bg: '' },

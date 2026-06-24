@@ -2425,8 +2425,10 @@ function ChannelItem({ channel, isSubscribed, role, onOpen, currentUser, onSubsc
     <div onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', transition: 'background 0.15s' }}
       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
       onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
-      <div style={{ width: 44, height: 44, borderRadius: 12, background: channel.avatar_url ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: channel.avatar_url ? `url(${channel.avatar_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 18 }}>
-        {!channel.avatar_url && channel.name?.[0]?.toUpperCase()}
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 18, overflow: 'hidden', position: 'relative' }}>
+        {channel.avatar_url
+          ? <img src={channel.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          : channel.name?.[0]?.toUpperCase()}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: 'white' }}>{channel.name} {role === 'admin' && <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.2)', color: '#a78bfa', borderRadius: 6, padding: '1px 5px', marginLeft: 4 }}>admin</span>}</div>
@@ -2506,8 +2508,10 @@ function CreateChannelModal({ currentUser, onClose, onCreate }) {
         {/* Avatar picker */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
           <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => avatarRef.current?.click()}>
-            <div style={{ width: 72, height: 72, borderRadius: 18, background: avatarPreview ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: avatarPreview ? `url(${avatarPreview})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 28 }}>
-              {!avatarPreview && '📷'}
+            <div style={{ width: 72, height: 72, borderRadius: 18, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 28, overflow: 'hidden', position: 'relative' }}>
+              {avatarPreview
+                ? <img src={avatarPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                : '📷'}
             </div>
             <div style={{ position: 'absolute', bottom: -4, right: -4, width: 24, height: 24, borderRadius: '50%', background: '#a78bfa', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>+</div>
           </div>
@@ -2653,8 +2657,10 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
           <div style={{ marginTop: -24, marginBottom: 10 }}>
             <div style={{ position: 'relative', display: 'inline-block', cursor: isAdmin ? 'pointer' : undefined }}
               onClick={() => isAdmin && avatarFileRef.current?.click()}>
-              <div style={{ width: 56, height: 56, borderRadius: 14, background: localAvatar ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: localAvatar ? `url(${localAvatar})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', border: '3px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 22 }}>
-                {!localAvatar && (avatarUploading ? '…' : channel.name?.[0]?.toUpperCase())}
+              <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: '3px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 22, overflow: 'hidden', position: 'relative' }}>
+                {localAvatar
+                  ? <img src={localAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  : (avatarUploading ? '…' : channel.name?.[0]?.toUpperCase())}
               </div>
               {isAdmin && (
                 <div style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: '#a78bfa', border: '2px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>
@@ -2882,8 +2888,10 @@ function ChannelSettingsModal({ channel, currentUser, onClose, onUpdated }) {
         {/* Avatar upload */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
           <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => avatarFileRef.current?.click()}>
-            <div style={{ width: 64, height: 64, borderRadius: 16, background: localAvatar ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: localAvatar ? `url(${localAvatar})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 24 }}>
-              {!localAvatar && channel.name?.[0]?.toUpperCase()}
+            <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 24, overflow: 'hidden', position: 'relative' }}>
+              {localAvatar
+                ? <img src={localAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                : channel.name?.[0]?.toUpperCase()}
             </div>
             <div style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: '#a78bfa', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
               {avatarUploading ? '…' : '✎'}

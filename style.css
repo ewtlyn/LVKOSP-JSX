@@ -1570,3 +1570,208 @@ html {
 button, label, a {
   touch-action: manipulation;
 }
+
+/* ================================================================
+   ПОЛНАЯ МОБИЛЬНАЯ АДАПТИВНОСТЬ
+   ================================================================ */
+
+/* Убираем серую вспышку при тапе (iOS + Android) */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Запрет выделения текста при долгом нажатии на интерактивных элементах */
+button, .tab, .dmItem, .friend-item, .iconBtn, .clipBtn {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* GPU-слой для сайдбара — плавная анимация без рывков */
+.sidebar {
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Перенос длинных слов/URL в сообщениях и постах */
+.msgBubble, .postCard__text {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Имя в шапке чата — обрезать при переполнении */
+.chatHeader__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   УБИРАЕМ HOVER-ТРАНСФОРМАЦИИ НА ТАЧ-УСТРОЙСТВАХ
+   (без этого элементы "залипают" в поднятом состоянии после тапа)
+   ================================================================ */
+@media (hover: none) {
+  .friend-item:hover { transform: none; }
+  .search-result-item:hover { transform: none; }
+  .sendBtn:hover { transform: none; }
+  .auth-form button[type="submit"]:active { transform: none; }
+}
+
+/* ================================================================
+   ПРЕДОТВРАЩАЕМ АВТОЗУМ ПРИ ФОКУСЕ НА INPUT (iOS Safari)
+   font-size < 16px вызывает автоматический зум страницы
+   ================================================================ */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="search"],
+  input[type="number"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+  .chatInput { font-size: 16px !important; }
+}
+
+/* Скрываем скроллбар на мобильных (он там мешает) */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar { width: 0; height: 0; }
+}
+
+/* ================================================================
+   SAFE AREA INSETS (notch, Dynamic Island, Home Bar)
+   ================================================================ */
+@media (max-width: 768px) {
+  /* Гамбургер — не прячется за notch */
+  .mobile-menu-btn {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: calc(10px + env(safe-area-inset-left, 0px));
+  }
+
+  /* Заголовки разделов — сдвиг под notch + под гамбургер */
+  .view-header {
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-left: calc(58px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+  }
+
+  /* Шапка чата — та же логика */
+  .chatHeader {
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-left: calc(58px + env(safe-area-inset-left, 0px));
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+  }
+
+  /* Composer внизу — Home Bar на iPhone */
+  .chatComposer {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(12px + env(safe-area-inset-left, 0px));
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+  }
+
+  /* Карточка пользователя внизу сайдбара */
+  .meCard {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Список чатов — не обрезается Home Bar */
+  .dmList {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Бренд-плашка сайдбара — под notch */
+  .brand {
+    padding-top: calc(24px + env(safe-area-inset-top, 0px));
+  }
+
+  /* Минимальные зоны касания 44×44px */
+  .iconBtn, .clipBtn { min-width: 44px; min-height: 44px; }
+  .tab { min-height: 48px; }
+  .dmItem { min-height: 64px; }
+
+  /* Карточки постов */
+  .postCard {
+    margin: 12px 14px;
+    padding: 16px;
+  }
+
+  /* Тело чата */
+  .chatBody {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  /* Профиль */
+  .profileTop { padding: 20px 16px; }
+  .profileBio { max-width: 100%; }
+}
+
+/* ================================================================
+   ОЧЕНЬ МАЛЕНЬКИЕ ЭКРАНЫ (≤ 380px: iPhone SE, Galaxy A)
+   ================================================================ */
+@media (max-width: 380px) {
+  .view-header__title { font-size: 20px; }
+  .view-header {
+    padding-left: calc(54px + env(safe-area-inset-left, 0px));
+  }
+  .chatHeader {
+    padding-left: calc(54px + env(safe-area-inset-left, 0px));
+  }
+  .chatHeader__name { font-size: 14px; }
+  .chatHeader__avatar { width: 34px; height: 34px; }
+
+  .postCard { margin: 8px 10px; padding: 12px; }
+  .chatBody { padding: 10px; gap: 8px; }
+  .chatComposer { gap: 4px; }
+
+  .msgBubble { max-width: 90%; padding: 10px 13px; font-size: 14px; }
+
+  .profileName { font-size: 19px; }
+  .profileAvatar { width: 60px; height: 60px; }
+  .profileTop__left { gap: 12px; }
+
+  .dmAvatar { width: 42px; height: 42px; }
+  .dmItem { padding: 10px 12px; gap: 10px; }
+  .dmName { font-size: 14px; }
+  .dmSnippet { font-size: 12px; }
+
+  .friends-content { padding: 0 12px 20px; }
+  .friend-item { padding: 12px; gap: 10px; }
+  .friend-avatar { width: 40px; height: 40px; }
+  .friend-name { font-size: 14px; }
+  .friend-username { font-size: 12px; }
+}
+
+/* ================================================================
+   LANDSCAPE НА ТЕЛЕФОНЕ (горизонтальная ориентация)
+   ================================================================ */
+@media (max-width: 896px) and (orientation: landscape) and (max-height: 500px) {
+  .view-header {
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    padding-bottom: 8px;
+  }
+  .view-header__title { font-size: 18px; }
+
+  .chatHeader {
+    padding-top: calc(6px + env(safe-area-inset-top, 0px));
+    padding-bottom: 6px;
+  }
+  .chatHeader__avatar { width: 32px; height: 32px; }
+  .chatHeader__name { font-size: 14px; }
+  .chatHeader__status { display: none; }
+
+  .chatBody { padding: 8px 14px; gap: 6px; }
+  .msgBubble { padding: 8px 13px; font-size: 14px; max-width: 75%; }
+
+  .chatComposer {
+    padding-top: 8px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-menu-btn {
+    top: calc(6px + env(safe-area-inset-top, 0px));
+    left: calc(6px + env(safe-area-inset-left, 0px));
+    padding: 7px;
+  }
+}

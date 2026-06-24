@@ -17,7 +17,7 @@ async function compressImage(file, maxSide = 1080, quality = 0.85) {
         }
       }
       const canvas = document.createElement("canvas");
-      canvas.width = width;
+      canvas.width = width;от
       canvas.height = height;
       canvas.getContext("2d").drawImage(img, 0, 0, width, height);
       canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);

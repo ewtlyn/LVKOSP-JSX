@@ -31,6 +31,13 @@ async function hashPassword(password) {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function isImageFile(file) {
+  if (!file) return false;
+  const t = (file.type || "").toLowerCase();
+  // Allow empty type (Android file managers) or any image/* or heic/heif
+  return !t || t.startsWith("image/") || t.includes("heic") || t.includes("heif");
+}
+
 async function compressImage(file, maxSide = 800, quality = 0.82) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -47,11 +54,17 @@ async function compressImage(file, maxSide = 800, quality = 0.82) {
           height = maxSide;
         }
       }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(file); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);
+      } catch {
+        resolve(file);
+      }
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -62,34 +75,23 @@ async function compressImage(file, maxSide = 800, quality = 0.82) {
 }
 
 async function uploadAvatar(file, userId) {
-  if (!file || !file.type.startsWith("image/"))
-    throw new Error("Please select a valid image file");
+  if (!isImageFile(file))
+    throw new Error("Выберите изображение");
   const uploadFile = await compressImage(file, 800, 0.82);
   const filePath = `${userId}/avatar_${Date.now()}.jpg`;
+  const contentType = (uploadFile instanceof Blob && uploadFile.type) ? uploadFile.type : "image/jpeg";
   const uploadTimeout = new Promise((_, reject) =>
-    setTimeout(
-      () =>
-        reject(
-          new Error(
-            "Upload timeout — создайте бакет avatars в Supabase Storage",
-          ),
-        ),
-      15000,
-    ),
+    setTimeout(() => reject(new Error("Превышено время загрузки — проверьте соединение")), 30000),
   );
   const { error } = await Promise.race([
     supabase.storage
       .from("avatars")
-      .upload(filePath, uploadFile, {
-        cacheControl: "3600",
-        upsert: true,
-        contentType: "image/jpeg",
-      }),
+      .upload(filePath, uploadFile, { cacheControl: "3600", upsert: true, contentType }),
     uploadTimeout,
   ]);
   if (error) {
     if (error.message?.includes('Bucket not found') || error.statusCode === 404 || error.status === 404)
-      throw new Error('Бакет "avatars" не найден в Supabase Storage. Создайте его в Dashboard → Storage и сделайте публичным.');
+      throw new Error('Бакет "avatars" не найден. Создайте его в Supabase Dashboard → Storage.');
     throw error;
   }
   const { data: pub } = supabase.storage.from("avatars").getPublicUrl(filePath);
@@ -120,14 +122,14 @@ function isNetworkError(error) {
   );
 }
 
-async function supabaseRetry(fn, retries = 2, delayMs = 2000) {
+async function supabaseRetry(fn, retries = 1, delayMs = 1500) {
   const timeoutResult = {
     data: null,
     error: { message: "timeout", code: "TIMEOUT" },
   };
   const result = await Promise.race([
     fn(),
-    new Promise((resolve) => setTimeout(() => resolve(timeoutResult), 20000)),
+    new Promise((resolve) => setTimeout(() => resolve(timeoutResult), 8000)),
   ]);
   if (result.error) {
     if (result.error.code === "TIMEOUT") {
@@ -187,7 +189,7 @@ export class AuthService {
         console.error("[signUp] check error:", checkError);
         const msg =
           checkError.code === "TIMEOUT"
-            ? "Сервер не отвечает. Попробуйте ещё раз."
+            ? "Сервер не отвечает — проверьте интернет. На Windows: отключите антивирус/VPN или попробуйте другой браузер."
             : "Ошибка подключения. Попробуйте снова.";
         return { success: false, error: msg };
       }
@@ -224,7 +226,7 @@ export class AuthService {
         console.error("[signUp] insert error:", profileError);
         const msg =
           profileError.code === "TIMEOUT"
-            ? "Сервер не отвечает. Попробуйте ещё раз."
+            ? "Сервер не отвечает — проверьте интернет. На Windows: отключите антивирус/VPN или попробуйте другой браузер."
             : profileError.message || "Ошибка регистрации";
         return { success: false, error: msg };
       }
@@ -260,7 +262,7 @@ export class AuthService {
         console.error("[signIn] error:", error);
         const msg =
           error.code === "TIMEOUT"
-            ? "Сервер не отвечает. Попробуйте ещё раз."
+            ? "Сервер не отвечает — проверьте интернет. На Windows: отключите антивирус/VPN или попробуйте другой браузер."
             : "Ошибка подключения. Попробуйте снова.";
         return { success: false, error: msg };
       }
@@ -445,7 +447,7 @@ export class AuthService {
 
   async updateBanner(userId, bannerFile) {
     try {
-      if (!bannerFile || !bannerFile.type.startsWith("image/"))
+      if (!isImageFile(bannerFile))
         return { success: false, error: "Выберите изображение" };
       const uploadFile = await compressImage(bannerFile, 1200, 0.8);
       const filePath = `${userId}/banner_${Date.now()}.jpg`;

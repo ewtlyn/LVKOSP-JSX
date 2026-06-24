@@ -3040,7 +3040,13 @@ export default function App() {
   // инит
   useEffect(() => {
     supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1)
-      .then(({ error }) => { setServerOnline(!error); })
+      .then(({ error }) => {
+        if (!error) { setServerOnline(true); return; }
+        // RLS/permission error = сервер работает, просто нет доступа без авторизации
+        const msg = (error.message || '').toLowerCase();
+        const isNetworkDown = msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('err_') || msg.includes('terminated');
+        setServerOnline(!isNetworkDown);
+      })
       .catch(() => setServerOnline(false));
   }, []);
 

@@ -62,11 +62,15 @@ export class PostsService {
             height = maxSide;
           }
         }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(file); return; }
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);
+        } catch { resolve(file); }
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
@@ -77,22 +81,17 @@ export class PostsService {
   }
 
   async uploadPostImage(file, userId) {
-    if (!file || !file.type.startsWith("image/"))
+    const mimeType = (file?.type || "").toLowerCase();
+    if (!file || (!mimeType.startsWith("image/") && !mimeType.includes("heic") && !mimeType.includes("heif") && mimeType !== ""))
       throw new Error("Not an image");
     const uploadFile = await this.compressImage(file, 1080, 0.85);
     const path = `${userId}/${Date.now()}.jpg`;
-    const uploadTimeout = new Promise((_, reject) =>
-      setTimeout(
-        () =>
-          reject(new Error("Бакет post-media не создан в Supabase Storage")),
-        15000,
-      ),
-    );
+    const contentType = (uploadFile instanceof Blob && uploadFile.type) ? uploadFile.type : "image/jpeg";
     const { error } = await Promise.race([
       supabase.storage
         .from("post-media")
-        .upload(path, uploadFile, { upsert: true, contentType: "image/jpeg" }),
-      uploadTimeout,
+        .upload(path, uploadFile, { upsert: true, contentType }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Превышено время загрузки")), 30000)),
     ]);
     if (error) throw error;
     const { data } = supabase.storage.from("post-media").getPublicUrl(path);

@@ -102,20 +102,15 @@ export class ChatService {
   }
 
   async uploadChatImage(file, chatId, userId) {
-    if (!file || !file.type.startsWith("image/"))
+    const mimeType = (file?.type || "").toLowerCase();
+    if (!file || (!mimeType.startsWith("image/") && !mimeType.includes("heic") && !mimeType.includes("heif") && mimeType !== ""))
       throw new Error("Not an image");
-    if (file.size > 5 * 1024 * 1024) throw new Error("Max 5MB");
-    const ext = file.name.split(".").pop();
-    const path = `${chatId}/${userId}_${Date.now()}.${ext}`;
+    if (file.size > 15 * 1024 * 1024) throw new Error("Файл слишком большой (макс 15МБ)");
+    const path = `${chatId}/${userId}_${Date.now()}.jpg`;
+    const contentType = (file.type && file.type.startsWith("image/")) ? file.type : "image/jpeg";
     const { error } = await Promise.race([
-      supabase.storage.from("chat-media").upload(path, file, { upsert: true }),
-      new Promise((_, reject) =>
-        setTimeout(
-          () =>
-            reject(new Error("Бакет chat-media не создан в Supabase Storage")),
-          10000,
-        ),
-      ),
+      supabase.storage.from("chat-media").upload(path, file, { upsert: true, contentType }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Превышено время загрузки")), 30000)),
     ]);
     if (error) throw error;
     const { data } = supabase.storage.from("chat-media").getPublicUrl(path);

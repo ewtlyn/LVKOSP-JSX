@@ -12,7 +12,7 @@ export class ChatService {
       const { data: chatMemberships, error } = await supabase
         .from("chat_members")
         .select(
-          `chat_id, archived, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar, group_description )`,
+          `chat_id, archived, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar )`,
         )
         .eq("user_id", userId);
 
@@ -56,7 +56,6 @@ export class ChatService {
             archived: membership.archived || false,
             isGroup: true,
             memberCount: otherMembers.length + 1,
-            description: chat.group_description || '',
           });
           continue;
         }

@@ -746,25 +746,30 @@ body {
 }
 
 .sendBtn {
-  background: rgba(35, 34, 34, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-  padding: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  padding: 0;
   border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s, transform 0.08s, color 0.15s;
 }
 
-.sendBtn:hover {
-  background: rgba(35, 34, 34, 1);
-  transform: scale(1.05);
+.sendBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+  transform: scale(1.08);
+}
+
+.sendBtn:active:not(:disabled) {
+  transform: scale(0.93);
 }
 
 .blank {
@@ -1443,8 +1448,7 @@ html {
 .chatInput:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* sendBtn — disabled состояние */
-.sendBtn:disabled { opacity: 0.3; cursor: not-allowed; }
-.sendBtn:hover:not(:disabled) { background: rgba(55, 54, 54, 1); transform: scale(1.05); }
+.sendBtn:disabled { opacity: 0.25; cursor: not-allowed; }
 
 /* online/offline статус-точки — позиционируются поверх аватара */
 .online-status {

@@ -2446,8 +2446,19 @@ function CreateChannelModal({ currentUser, onClose, onCreate }) {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [desc, setDesc] = useState('');
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const avatarRef = useRef(null);
+
+  function handleAvatarPick(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    e.target.value = '';
+    setAvatarFile(f);
+    setAvatarPreview(URL.createObjectURL(f));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -2455,9 +2466,34 @@ function CreateChannelModal({ currentUser, onClose, onCreate }) {
     setSaving(true);
     setError('');
     const res = await channelsService.create(currentUser.id, { name, username, description: desc });
+    if (!res.success) { setError(res.error); setSaving(false); return; }
+    if (avatarFile) {
+      try {
+        const compressed = await new Promise(resolve => {
+          const img = new Image(); const url = URL.createObjectURL(avatarFile);
+          img.onload = () => {
+            URL.revokeObjectURL(url);
+            const s = 256; const canvas = document.createElement('canvas');
+            canvas.width = s; canvas.height = s;
+            const ctx = canvas.getContext('2d');
+            const side = Math.min(img.width, img.height);
+            ctx.drawImage(img, (img.width-side)/2, (img.height-side)/2, side, side, 0, 0, s, s);
+            canvas.toBlob(b => resolve(b || avatarFile), 'image/jpeg', 0.9);
+          };
+          img.onerror = () => { URL.revokeObjectURL(url); resolve(avatarFile); };
+          img.src = url;
+        });
+        const path = `channel_${res.channel.id}_${Date.now()}.jpg`;
+        const { error: upErr } = await supabase.storage.from('avatars').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+        if (!upErr) {
+          const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+          await supabase.from('channels').update({ avatar_url: data.publicUrl }).eq('id', res.channel.id);
+          res.channel.avatar_url = data.publicUrl;
+        }
+      } catch {}
+    }
     setSaving(false);
-    if (res.success) { onCreate(res.channel); }
-    else setError(res.error);
+    onCreate(res.channel);
   }
 
   const inp = { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 14px', color: 'white', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' };
@@ -2466,6 +2502,18 @@ function CreateChannelModal({ currentUser, onClose, onCreate }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '20px 20px 0 0', padding: 24, width: '100%', maxWidth: 480, paddingBottom: 'calc(24px + env(safe-area-inset-bottom,0px))' }}>
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 18 }}>Новый канал</div>
+
+        {/* Avatar picker */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
+          <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => avatarRef.current?.click()}>
+            <div style={{ width: 72, height: 72, borderRadius: 18, background: avatarPreview ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: avatarPreview ? `url(${avatarPreview})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 28 }}>
+              {!avatarPreview && '📷'}
+            </div>
+            <div style={{ position: 'absolute', bottom: -4, right: -4, width: 24, height: 24, borderRadius: '50%', background: '#a78bfa', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>+</div>
+          </div>
+          <input ref={avatarRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarPick} />
+        </div>
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Название канала" style={inp} autoFocus />
           <div style={{ position: 'relative' }}>
@@ -2499,8 +2547,45 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
   const [composerFile, setComposerFile] = useState(null);
   const [posting, setPosting] = useState(false);
   const [editingChannel, setEditingChannel] = useState(false);
+  const [localAvatar, setLocalAvatar] = useState(channel.avatar_url || '');
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const fileRef = useRef(null);
+  const avatarFileRef = useRef(null);
   const isAdmin = membership?.role === 'admin';
+
+  async function handleAvatarUpload(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    e.target.value = '';
+    setAvatarUploading(true);
+    try {
+      const compressed = await new Promise(resolve => {
+        const img = new Image(); const url = URL.createObjectURL(f);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const s = 256; const canvas = document.createElement('canvas');
+          canvas.width = s; canvas.height = s;
+          const ctx = canvas.getContext('2d');
+          const side = Math.min(img.width, img.height);
+          ctx.drawImage(img, (img.width-side)/2, (img.height-side)/2, side, side, 0, 0, s, s);
+          canvas.toBlob(b => resolve(b || f), 'image/jpeg', 0.9);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(f); };
+        img.src = url;
+      });
+      const path = `channel_${channel.id}_${Date.now()}.jpg`;
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      await supabase.from('channels').update({ avatar_url: data.publicUrl }).eq('id', channel.id);
+      setLocalAvatar(data.publicUrl);
+      channel.avatar_url = data.publicUrl;
+      notificationService.showNotification('Аватарка обновлена', '', 'success');
+    } catch (err) {
+      notificationService.showNotification('Ошибка', err.message, 'error');
+    }
+    setAvatarUploading(false);
+  }
 
   useEffect(() => {
     (async () => {
@@ -2566,9 +2651,18 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
         </div>
         <div style={{ padding: '0 16px 16px', position: 'relative' }}>
           <div style={{ marginTop: -24, marginBottom: 10 }}>
-            <div style={{ width: 52, height: 52, borderRadius: 14, background: channel.avatar_url ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: channel.avatar_url ? `url(${channel.avatar_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', border: '3px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 22 }}>
-              {!channel.avatar_url && channel.name?.[0]?.toUpperCase()}
+            <div style={{ position: 'relative', display: 'inline-block', cursor: isAdmin ? 'pointer' : undefined }}
+              onClick={() => isAdmin && avatarFileRef.current?.click()}>
+              <div style={{ width: 56, height: 56, borderRadius: 14, background: localAvatar ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: localAvatar ? `url(${localAvatar})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', border: '3px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 22 }}>
+                {!localAvatar && (avatarUploading ? '…' : channel.name?.[0]?.toUpperCase())}
+              </div>
+              {isAdmin && (
+                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: '#a78bfa', border: '2px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>
+                  {avatarUploading ? '…' : '✎'}
+                </div>
+              )}
             </div>
+            <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div>
@@ -5025,19 +5119,9 @@ export default function App() {
                   onClick={handleSend}
                   disabled={!activeChat || !messageText.trim()}
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M4 12 21 3l-5.2 18-4.3-7.2L4 12Z"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M21 3 11.5 13.8"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 12 21 3l-5.2 18-4.3-7.2L4 12Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+                    <path d="M21 3 11.5 13.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
                   </svg>
                 </button>
               </footer>

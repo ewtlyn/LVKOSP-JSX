@@ -101,12 +101,15 @@ export class ChatService {
   }
 
   async uploadChatImage(file, chatId, userId) {
-    const mimeType = (file?.type || "").toLowerCase();
-    if (!file || (!mimeType.startsWith("image/") && !mimeType.includes("heic") && !mimeType.includes("heif") && mimeType !== ""))
-      throw new Error("Not an image");
-    if (file.size > 15 * 1024 * 1024) throw new Error("Файл слишком большой (макс 15МБ)");
-    const path = `${chatId}/${userId}_${Date.now()}.jpg`;
-    const contentType = (file.type && file.type.startsWith("image/")) ? file.type : "image/jpeg";
+    if (!file) throw new Error("No file");
+    if (file.size > 25 * 1024 * 1024) throw new Error("Файл слишком большой (макс 25МБ)");
+    const mimeType = (file.type || "").toLowerCase();
+    const isImage = mimeType.startsWith("image/") || mimeType.includes("heic") || mimeType.includes("heif") || mimeType === "";
+    const isAudio = mimeType.startsWith("audio/");
+    if (!isImage && !isAudio) throw new Error("Неподдерживаемый тип файла");
+    const ext = isAudio ? (mimeType.includes("ogg") ? "ogg" : "webm") : "jpg";
+    const path = `${chatId}/${userId}_${Date.now()}.${ext}`;
+    const contentType = file.type || (isAudio ? "audio/webm" : "image/jpeg");
     const { error } = await Promise.race([
       supabase.storage.from("chat-media").upload(path, file, { upsert: true, contentType }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("Превышено время загрузки")), 30000)),

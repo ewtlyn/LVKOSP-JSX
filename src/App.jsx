@@ -2882,12 +2882,6 @@ export default function App() {
   const [messageText, setMessageText] = useState("");
   const chatBodyRef = useRef(null);
   const emojiPickerRef = useRef(null);
-  useEffect(() => {
-    if (!emojiPickerOpen) return;
-    const handler = (e) => { if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) setEmojiPickerOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [emojiPickerOpen]);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -2984,6 +2978,12 @@ export default function App() {
   // reply
   const [replyTo, setReplyTo] = useState(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    const handler = (e) => { if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) setEmojiPickerOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [emojiPickerOpen]);
 
   // обои чатов
   const [wallpaperPickerOpen, setWallpaperPickerOpen] = useState(false)

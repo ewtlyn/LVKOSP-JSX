@@ -2726,7 +2726,47 @@ function ChannelSettingsModal({ channel, currentUser, onClose, onUpdated }) {
   const [name, setName] = useState(channel.name || '');
   const [desc, setDesc] = useState(channel.description || '');
   const [saving, setSaving] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [localAvatar, setLocalAvatar] = useState(channel.avatar_url || '');
   const [error, setError] = useState('');
+  const avatarFileRef = useRef(null);
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setAvatarUploading(true);
+    try {
+      const compressed = await new Promise(resolve => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const size = 256;
+          const canvas = document.createElement('canvas');
+          canvas.width = size; canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          const s = Math.min(img.width, img.height);
+          const sx = (img.width - s) / 2, sy = (img.height - s) / 2;
+          ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+          canvas.toBlob(b => resolve(b || file), 'image/jpeg', 0.9);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+      });
+      const path = `channel_${channel.id}_${Date.now()}.jpg`;
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      await supabase.from('channels').update({ avatar_url: data.publicUrl }).eq('id', channel.id);
+      setLocalAvatar(data.publicUrl);
+      onUpdated?.({ avatar_url: data.publicUrl });
+      notificationService.showNotification('Аватарка обновлена', '', 'success');
+    } catch (err) {
+      notificationService.showNotification('Ошибка', err.message, 'error');
+    }
+    setAvatarUploading(false);
+  }
 
   async function handleSave(e) {
     e.preventDefault();
@@ -2744,8 +2784,23 @@ function ChannelSettingsModal({ channel, currentUser, onClose, onUpdated }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '20px 20px 0 0', padding: 24, width: '100%', maxWidth: 480, paddingBottom: 'calc(24px + env(safe-area-inset-bottom,0px))' }}>
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 18 }}>Настройки канала</div>
+
+        {/* Avatar upload */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+          <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => avatarFileRef.current?.click()}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, background: localAvatar ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: localAvatar ? `url(${localAvatar})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 24 }}>
+              {!localAvatar && channel.name?.[0]?.toUpperCase()}
+            </div>
+            <div style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: '#a78bfa', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
+              {avatarUploading ? '…' : '✎'}
+            </div>
+          </div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>Нажми на аватарку,<br/>чтобы сменить фото</div>
+          <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
+        </div>
+
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="Название" style={inp} autoFocus />
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Название" style={inp} />
           <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Описание" rows={2} style={{ ...inp, resize: 'none' }} />
           {error && <div style={{ fontSize: 12, color: '#f87171' }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>

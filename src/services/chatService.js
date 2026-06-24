@@ -107,7 +107,7 @@ export class ChatService {
     const isImage = mimeType.startsWith("image/") || mimeType.includes("heic") || mimeType.includes("heif") || mimeType === "";
     const isAudio = mimeType.startsWith("audio/");
     if (!isImage && !isAudio) throw new Error("Неподдерживаемый тип файла");
-    const ext = isAudio ? (mimeType.includes("ogg") ? "ogg" : "webm") : "jpg";
+    const ext = isAudio ? (mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm") : "jpg";
     const path = `${chatId}/${userId}_${Date.now()}.${ext}`;
     const contentType = file.type || (isAudio ? "audio/webm" : "image/jpeg");
     const { error } = await Promise.race([

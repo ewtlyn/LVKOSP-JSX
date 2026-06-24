@@ -2497,12 +2497,13 @@ function VoicePlayer({ src, isMe }) {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [loadError, setLoadError] = useState(false);
 
   function toggle() {
     const a = audioRef.current;
-    if (!a) return;
+    if (!a || loadError) return;
     if (playing) { a.pause(); setPlaying(false); }
-    else { a.play(); setPlaying(true); }
+    else { a.play().then(() => setPlaying(true)).catch(() => setLoadError(true)); }
   }
 
   function fmt(s) {
@@ -2515,15 +2516,20 @@ function VoicePlayer({ src, isMe }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 180, maxWidth: 240 }}>
-      <audio ref={audioRef} src={src}
+      <audio ref={audioRef} src={src} preload="metadata"
         onTimeUpdate={e => { const a = e.target; setCurrentTime(a.currentTime); setProgress(a.duration ? a.currentTime / a.duration : 0); }}
-        onLoadedMetadata={e => setDuration(e.target.duration)}
+        onLoadedMetadata={e => { setDuration(e.target.duration); setLoadError(false); }}
         onEnded={() => { setPlaying(false); setProgress(0); setCurrentTime(0); if (audioRef.current) audioRef.current.currentTime = 0; }}
+        onError={() => setLoadError(true)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
       />
-      <button onClick={toggle} style={{ width: 34, height: 34, borderRadius: '50%', background: accent, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isMe ? '#1a1a2e' : 'white' }}>
-        {playing
-          ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-          : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+      <button onClick={toggle} title={loadError ? 'Формат не поддерживается браузером' : undefined} style={{ width: 34, height: 34, borderRadius: '50%', background: loadError ? 'rgba(239,68,68,0.5)' : accent, border: 'none', cursor: loadError ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isMe ? '#1a1a2e' : 'white' }}>
+        {loadError
+          ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          : playing
+            ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
         }
       </button>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -3326,18 +3332,29 @@ export default function App() {
     if (!activeChatId) return
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
+      // Выбираем лучший поддерживаемый формат: iOS нужен mp4, Android/Chrome — webm
+      const preferredType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ].find(t => MediaRecorder.isTypeSupported(t)) || ''
+      const mr = preferredType ? new MediaRecorder(stream, { mimeType: preferredType }) : new MediaRecorder(stream)
       audioChunksRef.current = []
       mr.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
       mr.onstop = async () => {
         stream.getTracks().forEach(t => t.stop())
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        const file = new File([blob], `voice_${Date.now()}.webm`, { type: 'audio/webm' })
+        const mimeType = mr.mimeType || preferredType || 'audio/webm'
+        const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+        const blob = new Blob(audioChunksRef.current, { type: mimeType })
+        const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: mimeType })
         try {
           const res = await chatService.sendVoice(activeChatId, user.id, file)
           if (res.success) {
             setMessages(prev => prev.find(m => m.id === res.message.id) ? prev : [...prev, { ...res.message, sender: { id: user.id, name: user.name, avatar_url: user.avatar_url || '' } }])
             scrollToBottom()
+          } else {
+            notificationService.showNotification('Ошибка', res.error || 'Не удалось отправить голосовое', 'error')
           }
         } catch (e) {
           notificationService.showNotification('Ошибка', 'Не удалось отправить голосовое', 'error')

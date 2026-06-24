@@ -355,7 +355,7 @@ export class ChatService {
     return { success: true };
   }
 
-  subscribeToMessages(chatId, onNewMessage, onDeleteMessage) {
+  subscribeToMessages(chatId, onNewMessage, onDeleteMessage, onUpdateMessage) {
     this.unsubscribeFromMessages(chatId);
     const channel = supabase
       .channel(`chat:${chatId}`)
@@ -381,6 +381,18 @@ export class ChatService {
               avatar_url: "",
             },
           });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `chat_id=eq.${chatId}`,
+        },
+        (payload) => {
+          onUpdateMessage?.(payload.new);
         },
       )
       .on(

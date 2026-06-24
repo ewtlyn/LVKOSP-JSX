@@ -1894,7 +1894,7 @@ function SettingsPanel({ user, onUserUpdate, onLogout }) {
     </div>
   );
 }
-function ExploreView({ currentUser, onUserClick, onMentionClick }) {
+function ExploreView({ currentUser, onUserClick, onMentionClick, onShareClick, onNotify }) {
   const [query, setQuery] = useState('')
   const [userResults, setUserResults] = useState([])
   const [postResults, setPostResults] = useState([])
@@ -1959,7 +1959,7 @@ function ExploreView({ currentUser, onUserClick, onMentionClick }) {
         <div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Посты</div>
           {postResults.map(p => (
-            <PostCard key={p.id} post={p} currentUser={currentUser} onUserClick={onUserClick} onMentionClick={onMentionClick} />
+            <PostCard key={p.id} post={p} currentUser={currentUser} onUserClick={onUserClick} onMentionClick={onMentionClick} onShareClick={onShareClick} onNotify={onNotify} />
           ))}
         </div>
       )}
@@ -2889,6 +2889,13 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
   const chatBodyRef = useRef(null);
+  const emojiPickerRef = useRef(null);
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    const handler = (e) => { if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) setEmojiPickerOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [emojiPickerOpen]);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -3150,6 +3157,7 @@ export default function App() {
     setMsgSearchOpen(false);
     setReplyTo(null);
     setPinnedMsg(null);
+    setEmojiPickerOpen(false);
     (async () => {
       const [msgs, pinned] = await Promise.all([
         chatService.getMessages(activeChatId, user.id),
@@ -3174,6 +3182,9 @@ export default function App() {
       },
       (deletedMsgId) => {
         setMessages((prev) => prev.filter((m) => m.id !== deletedMsgId));
+      },
+      (updatedMsg) => {
+        setMessages((prev) => prev.map((m) => m.id === updatedMsg.id ? { ...m, read: updatedMsg.read, edited: updatedMsg.edited, content: updatedMsg.content } : m));
       }
     );
 
@@ -3625,7 +3636,7 @@ export default function App() {
               onShareClick={setSharePost}
               onUserClick={(u) => { setFocusPost(null); openProfile(u); }}
               onDelete={() => setFocusPost(null)}
-              onNotify={() => {}}
+              onNotify={(type, toId, entityId, preview) => notificationsService.create(toId, type, user?.id, entityId, preview)}
               onMentionClick={(u) => { setFocusPost(null); openProfile(u); }}
             />
           </div>
@@ -4231,7 +4242,7 @@ export default function App() {
                 </div>
               )}
               {emojiPickerOpen && (
-                <div style={{ background: 'rgba(18,18,28,0.99)', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 12px' }}>
+                <div ref={emojiPickerRef} style={{ background: 'rgba(18,18,28,0.99)', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 12px' }}>
                   {[
                     ['😀','😂','🥰','😍','🤔','😊','😎','😭','😅','🥺','😏','😘','🤣','😤','🙂','🤗'],
                     ['👍','👎','👏','🙏','💪','🤝','🫶','✌️','🤞','👀','💀','🫡','🤦','🤷','🫠','😶'],
@@ -4699,7 +4710,7 @@ export default function App() {
               <div className="view-header__title">Поиск</div>
             </div>
             <div className="view-content" style={{ overflowY: "auto", padding: 16 }}>
-              {activeTab === "explore" && <ExploreView currentUser={user} onUserClick={openProfile} onMentionClick={handleMentionClick} />}
+              {activeTab === "explore" && <ExploreView currentUser={user} onUserClick={openProfile} onMentionClick={handleMentionClick} onShareClick={setSharePost} onNotify={(type, toId, entityId, preview) => notificationsService.create(toId, type, user?.id, entityId, preview)} />}
             </div>
           </section>
 
@@ -4782,6 +4793,17 @@ export default function App() {
                   }}
                 >
                   Заблокировать
+                </button>
+                <button
+                  className="btn is-outline"
+                  style={{ fontSize: 13, padding: '7px 14px', color: 'rgba(255,180,0,0.8)', borderColor: 'rgba(255,180,0,0.3)' }}
+                  onClick={async () => {
+                    if (!await showConfirm(`Отправить жалобу на ${viewingUser.name}?`, 'Пожаловаться')) return;
+                    supabase.from('reports').insert({ from_user_id: user.id, on_user_id: viewingUser.id, reason: 'user_report' }).then(() => {});
+                    notificationService.showNotification('Жалоба отправлена', 'Мы рассмотрим её в ближайшее время', 'success');
+                  }}
+                >
+                  Пожаловаться
                 </button>
               </div>
             )}

@@ -87,7 +87,11 @@ async function uploadAvatar(file, userId) {
       }),
     uploadTimeout,
   ]);
-  if (error) throw error;
+  if (error) {
+    if (error.message?.includes('Bucket not found') || error.statusCode === 404 || error.status === 404)
+      throw new Error('Бакет "avatars" не найден в Supabase Storage. Создайте его в Dashboard → Storage и сделайте публичным.');
+    throw error;
+  }
   const { data: pub } = supabase.storage.from("avatars").getPublicUrl(filePath);
   return pub?.publicUrl || "";
 }

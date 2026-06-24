@@ -1895,6 +1895,7 @@ function ExploreView({ currentUser, onUserClick, onMentionClick, onShareClick, o
   const [userResults, setUserResults] = useState([])
   const [postResults, setPostResults] = useState([])
   const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState(false)
   const timerRef = useRef(null)
   const blockedIdsRef = useRef(new Set())
 
@@ -1904,16 +1905,21 @@ function ExploreView({ currentUser, onUserClick, onMentionClick, onShareClick, o
 
   useEffect(() => {
     clearTimeout(timerRef.current)
-    if (!query.trim()) { setUserResults([]); setPostResults([]); return }
+    if (!query.trim()) { setUserResults([]); setPostResults([]); setSearchError(false); return }
     timerRef.current = setTimeout(async () => {
       setSearching(true)
-      const [users, posts] = await Promise.all([
-        authService.searchUsers(query),
-        postsService.searchPosts(query),
-      ])
-      const blocked = blockedIdsRef.current
-      setUserResults(users.filter(u => !blocked.has(u.id)))
-      setPostResults(posts.filter(p => !blocked.has(p.author_id)))
+      setSearchError(false)
+      try {
+        const [users, posts] = await Promise.all([
+          authService.searchUsers(query),
+          postsService.searchPosts(query),
+        ])
+        const blocked = blockedIdsRef.current
+        setUserResults(users.filter(u => !blocked.has(u.id)))
+        setPostResults(posts.filter(p => !blocked.has(p.author_id)))
+      } catch {
+        setSearchError(true)
+      }
       setSearching(false)
     }, 400)
     return () => clearTimeout(timerRef.current)
@@ -1931,10 +1937,13 @@ function ExploreView({ currentUser, onUserClick, onMentionClick, onShareClick, o
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
       </div>
       {searching && <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Поиск...</div>}
-      {!searching && !query.trim() && (
+      {!searching && searchError && (
+        <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,100,100,0.7)', fontSize: 13 }}>Ошибка поиска — проверьте соединение</div>
+      )}
+      {!searching && !searchError && !query.trim() && (
         <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>Введите запрос для поиска</div>
       )}
-      {!searching && query.trim() && userResults.length === 0 && postResults.length === 0 && (
+      {!searching && !searchError && query.trim() && userResults.length === 0 && postResults.length === 0 && (
         <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>Ничего не найдено</div>
       )}
       {userResults.length > 0 && (
@@ -3132,7 +3141,7 @@ export default function App() {
         return newReqs;
       });
       setDbNotifsUnread(count);
-    }, 30000);
+    }, 15000);
     return () => {
       clearInterval(t);
       clearInterval(poll);
@@ -5305,6 +5314,9 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
   const [groupName, setGroupName] = useState(chat.name || '');
   const [editingName, setEditingName] = useState(false);
   const [savingName, setSavingName] = useState(false);
+  const [description, setDescription] = useState(chat.description || '');
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [savingDesc, setSavingDesc] = useState(false);
   const avatarInputRef = useRef(null);
 
   useEffect(() => {
@@ -5367,6 +5379,14 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
     setSavingName(false);
   }
 
+  async function handleSaveDesc() {
+    setSavingDesc(true);
+    const res = await chatService.updateGroupDescription(chat.id, description.trim());
+    if (res.success) { setEditingDesc(false); onUpdated?.(); }
+    else notificationService.showNotification('Ошибка', res.error || 'Колонка group_description не найдена в БД', 'error');
+    setSavingDesc(false);
+  }
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9997, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#15152a', borderRadius: '20px 20px 0 0', padding: '20px 20px 32px', width: '100%', maxWidth: 480, maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -5399,6 +5419,19 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
               </div>
             )}
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{members.length} участников</div>
+            {/* Описание */}
+            {editingDesc ? (
+              <div style={{ marginTop: 6, display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+                <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '5px 8px', color: 'white', fontSize: 12, resize: 'none', fontFamily: 'inherit' }} autoFocus />
+                <button onClick={handleSaveDesc} disabled={savingDesc} style={{ background: '#7c3aed', border: 'none', borderRadius: 8, color: 'white', padding: '4px 8px', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>{savingDesc ? '...' : '✓'}</button>
+                <button onClick={() => setEditingDesc(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, color: 'white', padding: '4px 7px', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✕</button>
+              </div>
+            ) : (
+              <div onClick={() => setEditingDesc(true)} style={{ marginTop: 4, fontSize: 12, color: description ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.25)', cursor: 'pointer', fontStyle: description ? 'normal' : 'italic' }}>
+                {description || '+ Добавить описание группы'}
+              </div>
+            )}
           </div>
         </div>
 

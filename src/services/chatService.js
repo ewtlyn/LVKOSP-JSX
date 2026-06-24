@@ -11,7 +11,7 @@ export class ChatService {
       const { data: chatMemberships, error } = await supabase
         .from("chat_members")
         .select(
-          `chat_id, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar )`,
+          `chat_id, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar, group_description )`,
         )
         .eq("user_id", userId);
 
@@ -55,6 +55,7 @@ export class ChatService {
             archived: archivedMap[chat.id] || false,
             isGroup: true,
             memberCount: otherMembers?.length ? otherMembers.length + 1 : 1,
+            description: chat.group_description || '',
           });
           continue;
         }
@@ -351,6 +352,12 @@ export class ChatService {
 
   async updateGroupName(chatId, name) {
     const { error } = await supabase.from('chats').update({ group_name: name }).eq('id', chatId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  }
+
+  async updateGroupDescription(chatId, description) {
+    const { error } = await supabase.from('chats').update({ group_description: description }).eq('id', chatId);
     if (error) return { success: false, error: error.message };
     return { success: true };
   }

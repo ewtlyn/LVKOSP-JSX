@@ -709,6 +709,7 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .clipBtn {
@@ -754,6 +755,8 @@ body {
   border-radius: 50%;
   width: 44px;
   height: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1364,7 +1367,12 @@ body {
   }
   
   .chatComposer {
-    padding: 16px 20px;
+    padding: 10px 12px;
+    gap: 6px;
+  }
+  .chatInput {
+    padding: 10px 12px;
+    font-size: 14px;
   }
   
   .postCard {
@@ -1417,10 +1425,11 @@ html {
 /* chatInput — поле ввода сообщения (класс отсутствовал) */
 .chatInput {
   flex: 1;
+  min-width: 0;
   background: rgba(14, 14, 14, 0.8);
   border: 1px solid rgba(35, 34, 34, 0.8);
   border-radius: 24px;
-  padding: 12px 20px;
+  padding: 12px 16px;
   color: white;
   font-size: 15px;
   font-family: inherit;

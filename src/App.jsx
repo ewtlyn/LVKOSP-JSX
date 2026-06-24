@@ -2345,6 +2345,7 @@ function ChannelsView({ currentUser, onOpenChannel }) {
 
   const displayList = searchResults ?? allChannels;
   const myIds = new Set(myChannels.map(c => c.id));
+  const myRoles = new Map(myChannels.map(c => [c.id, c.role]));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -2385,7 +2386,7 @@ function ChannelsView({ currentUser, onOpenChannel }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {displayList.map(ch => (
-              <ChannelItem key={ch.id} channel={ch} isSubscribed={myIds.has(ch.id)} onOpen={() => onOpenChannel(ch)} currentUser={currentUser}
+              <ChannelItem key={ch.id} channel={ch} isSubscribed={myIds.has(ch.id)} role={myRoles.get(ch.id)} onOpen={() => onOpenChannel(ch)} currentUser={currentUser}
                 onSubscribe={(c) => setMyChannels(prev => [...prev, c])}
                 onUnsubscribe={() => setMyChannels(prev => prev.filter(c => c.id !== ch.id))} />
             ))}
@@ -2553,9 +2554,51 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
   const [editingChannel, setEditingChannel] = useState(false);
   const [localAvatar, setLocalAvatar] = useState(channel.avatar_url || '');
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [localBanner, setLocalBanner] = useState(channel.banner_url || '');
+  const [bannerUploading, setBannerUploading] = useState(false);
   const fileRef = useRef(null);
   const avatarFileRef = useRef(null);
+  const bannerFileRef = useRef(null);
   const isAdmin = membership?.role === 'admin';
+
+  async function handleBannerUpload(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    e.target.value = '';
+    setBannerUploading(true);
+    try {
+      const compressed = await new Promise(resolve => {
+        const img = new Image(); const url = URL.createObjectURL(f);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const W = 1200, H = 400;
+          const canvas = document.createElement('canvas');
+          canvas.width = W; canvas.height = H;
+          const ctx = canvas.getContext('2d');
+          const imgAspect = img.width / img.height;
+          const canvasAspect = W / H;
+          let sx = 0, sy = 0, sw = img.width, sh = img.height;
+          if (imgAspect > canvasAspect) { sw = img.height * canvasAspect; sx = (img.width - sw) / 2; }
+          else { sh = img.width / canvasAspect; sy = (img.height - sh) / 2; }
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+          canvas.toBlob(b => resolve(b || f), 'image/jpeg', 0.88);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(f); };
+        img.src = url;
+      });
+      const path = `channel_banner_${channel.id}_${Date.now()}.jpg`;
+      const { error: upErr } = await supabase.storage.from('post-media').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from('post-media').getPublicUrl(path);
+      await supabase.from('channels').update({ banner_url: data.publicUrl }).eq('id', channel.id);
+      setLocalBanner(data.publicUrl);
+      channel.banner_url = data.publicUrl;
+      notificationService.showNotification('Фон канала обновлён', '', 'success');
+    } catch (err) {
+      notificationService.showNotification('Ошибка', err.message, 'error');
+    }
+    setBannerUploading(false);
+  }
 
   async function handleAvatarUpload(e) {
     const f = e.target.files?.[0];
@@ -2645,10 +2688,19 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
     <div>
       {/* Channel header */}
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ height: 100, background: 'linear-gradient(135deg,#1e1b4b,#312e81)', position: 'relative' }}>
+        <div style={{ height: 100, background: 'linear-gradient(135deg,#1e1b4b,#312e81)', position: 'relative', overflow: 'hidden', cursor: isAdmin ? 'pointer' : undefined }}
+          onClick={() => isAdmin && bannerFileRef.current?.click()}>
+          {localBanner && <img src={localBanner} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', position: 'absolute', inset: 0 }} />}
           {isAdmin && (
-            <button onClick={() => setEditingChannel(true)}
-              style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+            <div className="bannerHint" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
+              <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, background: 'rgba(0,0,0,0.4)', padding: '4px 10px', borderRadius: 8, pointerEvents: 'none' }}>
+                {bannerUploading ? 'Загрузка…' : '🖼 Сменить фон'}
+              </span>
+            </div>
+          )}
+          {isAdmin && (
+            <button onClick={e => { e.stopPropagation(); setEditingChannel(true); }}
+              style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer', zIndex: 2 }}>
               Настройки
             </button>
           )}
@@ -2669,6 +2721,7 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
               )}
             </div>
             <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+            <input ref={bannerFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div>

@@ -1904,3 +1904,9 @@ input:focus, textarea:focus {
 .view-content, .chatBody, .dmList {
   scroll-behavior: smooth;
 }
+
+/* Banner hint — скрыт на десктопе, виден только при hover */
+@media (hover: hover) {
+  .bannerHint { opacity: 0; transition: opacity 0.15s; }
+  *:hover > .bannerHint { opacity: 1; }
+}

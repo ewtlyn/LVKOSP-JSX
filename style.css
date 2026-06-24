@@ -550,6 +550,8 @@ body {
   background: #0b0b0b;
   display: flex;
   flex-direction: column;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .chatHeader {
@@ -637,12 +639,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: #0b0b0b;
 }
 
 .msgRow {
   display: flex;
   margin-bottom: 8px;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 56px;
 }
 
 .msgRow.me {
@@ -858,6 +864,8 @@ body {
   background: rgba(14, 14, 14, 0.5);
   border-radius: 16px;
   margin: 28px;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 320px;
 }
 
 .postCard__head {
@@ -1516,6 +1524,8 @@ html {
   background: #0b0b0b;
   display: flex;
   flex-direction: column;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* mobile */

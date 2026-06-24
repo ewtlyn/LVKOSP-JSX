@@ -207,6 +207,8 @@ function Avatar({ url, name, size = 40, style: extra = {} }) {
       <img
         src={url}
         alt={name || ""}
+        loading="lazy"
+        decoding="async"
         onError={() => setErr(true)}
         style={{ ...base, objectFit: "cover", display: "block" }}
       />
@@ -646,7 +648,7 @@ function PostCard({
         extraMedia.length > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
             {[post.media_url, ...extraMedia].map((url, i) => (
-              <img key={i} src={url} alt="" onClick={() => openLightbox(url)}
+              <img key={i} src={url} alt="" loading="lazy" decoding="async" onClick={() => openLightbox(url)}
                 style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }} />
             ))}
           </div>
@@ -654,6 +656,8 @@ function PostCard({
           <img
             src={post.media_url}
             alt=""
+            loading="lazy"
+            decoding="async"
             onClick={() => openLightbox(post.media_url)}
             style={{
               width: "100%",
@@ -877,6 +881,8 @@ function PostCard({
   );
 }
 
+PostCard = React.memo(PostCard);
+
 // ─── CommentItem ───────────────────────────────────────────────────────────────
 function CommentItem({ comment: c, currentUser, onDeleted, onEdited }) {
   const [editMode, setEditMode] = useState(false);
@@ -924,6 +930,8 @@ function CommentItem({ comment: c, currentUser, onDeleted, onEdited }) {
     </div>
   );
 }
+
+CommentItem = React.memo(CommentItem);
 
 // ─── CreatePost ───────────────────────────────────────────────────────────────
 function CreatePost({
@@ -2476,6 +2484,8 @@ function LinkPreview({ url }) {
   )
 }
 
+VoicePlayer = React.memo(VoicePlayer);
+
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
 function VoicePlayer({ src, isMe }) {
@@ -2833,6 +2843,8 @@ function MessageBubble({
     </div>
   );
 }
+
+MessageBubble = React.memo(MessageBubble);
 
 const WALLPAPERS = [
   { id: '', label: 'По умолчанию', bg: '' },

@@ -209,6 +209,7 @@ export class PostsService {
       .from("posts")
       .insert({
         author_id: userId,
+        wall_owner_id: userId,
         repost_of_id: originalPostId,
         content: "",
         media_url: null,

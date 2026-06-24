@@ -10,6 +10,7 @@ import {
   authService,
   blocksService,
   bookmarksService,
+  channelsService,
   chatService,
   followsService,
   friendsService,
@@ -19,6 +20,7 @@ import {
   storiesService,
 } from "./services";
 import { pushService } from "./services/pushService";
+import { composeStory } from "./services/storiesService";
 
 const safeText = (s) => String(s ?? "");
 
@@ -326,6 +328,7 @@ function PostCard({
 }) {
   const [likeCount, setLikeCount] = useState(post._likeCount || 0);
   const [liked, setLiked] = useState(post._liked || false);
+  const [likeAnim, setLikeAnim] = useState(false);
   const [saved, setSaved] = useState(post._saved || false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState([]);
@@ -386,6 +389,7 @@ function PostCard({
     const prev = liked;
     setLiked(!prev);
     setLikeCount((c) => (prev ? c - 1 : c + 1));
+    if (!prev) { setLikeAnim(true); setTimeout(() => setLikeAnim(false), 400); }
     const res = await postsService.toggleLike(post.id, currentUser.id);
     if (!res.success) {
       setLiked(prev);
@@ -422,8 +426,10 @@ function PostCard({
     const prev = saved
     setSaved(!prev)
     const res = await bookmarksService.toggle(currentUser.id, post.id)
-    if (typeof res.saved === 'boolean') setSaved(res.saved)
-    else setSaved(prev)
+    if (typeof res.saved === 'boolean') {
+      setSaved(res.saved)
+      if (res.saved) notificationService.showNotification('Сохранено', 'Пост в закладках — смотри в своём профиле → вкладка Закладки', 'success')
+    } else setSaved(prev)
   }
 
   async function openComments() {
@@ -680,6 +686,7 @@ function PostCard({
       >
         <button
           onClick={handleLike}
+          className={likeAnim ? 'heart-pop' : ''}
           style={{
             display: "flex",
             alignItems: "center",
@@ -816,7 +823,8 @@ function PostCard({
           {comments.map((c) => (
             <CommentItem key={c.id} comment={c} currentUser={currentUser}
               onDeleted={() => { setComments(prev => prev.filter(x => x.id !== c.id)); setCommentCount(n => (n ?? 1) - 1); }}
-              onEdited={(id, text) => setComments(prev => prev.map(x => x.id === id ? { ...x, content: text } : x))} />
+              onEdited={(id, text) => setComments(prev => prev.map(x => x.id === id ? { ...x, content: text } : x))}
+              onUserClick={onUserClick} />
           ))}
           {currentUser && (
             <form
@@ -865,7 +873,7 @@ function PostCard({
             {likers.length === 0
               ? <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Загрузка...</div>
               : likers.map(u => (
-                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div key={u.id} onClick={() => { setLikersOpen(false); onUserClick?.(u); }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                   <Avatar url={u.avatar_url} name={u.name} size={36} />
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div>
@@ -882,7 +890,7 @@ function PostCard({
 }
 
 // ─── CommentItem ───────────────────────────────────────────────────────────────
-function CommentItem({ comment: c, currentUser, onDeleted, onEdited }) {
+function CommentItem({ comment: c, currentUser, onDeleted, onEdited, onUserClick }) {
   const [editMode, setEditMode] = useState(false);
   const [editText, setEditText] = useState(c.content || '');
   const [saving, setSaving] = useState(false);
@@ -904,10 +912,12 @@ function CommentItem({ comment: c, currentUser, onDeleted, onEdited }) {
 
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-      <Avatar url={c.user?.avatar_url} name={c.user?.name} size={28} />
+      <div onClick={() => onUserClick?.(c.user)} style={{ cursor: onUserClick ? 'pointer' : undefined, flexShrink: 0 }}>
+        <Avatar url={c.user?.avatar_url} name={c.user?.name} size={28} />
+      </div>
       <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '6px 10px', flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-          <span style={{ fontWeight: 700, fontSize: 12 }}>{c.user?.name}</span>
+          <span onClick={() => onUserClick?.(c.user)} style={{ fontWeight: 700, fontSize: 12, cursor: onUserClick ? 'pointer' : undefined }}>{c.user?.name}</span>
           {isOwn && !editMode && (
             <>
               <button onClick={() => { setEditMode(true); setEditText(c.content) }} style={{ background: 'none', border: 'none', color: 'rgba(160,160,255,0.5)', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>✏️</button>
@@ -1109,6 +1119,7 @@ function ProfileWall({
   onDelete,
   onNotify,
   onMentionClick,
+  onUserUpdate,
 }) {
   const [posts, setPosts] = useState([]);
   const [bookmarks, setBookmarks] = useState([]);
@@ -1122,17 +1133,23 @@ function ProfileWall({
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [followLoading, setFollowLoading] = useState(false);
-  const [followModal, setFollowModal] = useState(null); // 'followers' | 'following'
+  const [followModal, setFollowModal] = useState(null);
   const [followModalList, setFollowModalList] = useState([]);
   const [followModalLoading, setFollowModalLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [mutualFriends, setMutualFriends] = useState([]);
-  const bannerFileRef = useRef(null); // kept for compatibility
-  const avatarFileRef = useRef(null); // kept for compatibility
+  const bannerFileRef = useRef(null);
+  const avatarFileRef = useRef(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [localAvatarUrl, setLocalAvatarUrl] = useState(
     profileUser?.avatar_url || "",
   );
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [editName, setEditName] = useState(profileUser?.name || '');
+  const [editUsername, setEditUsername] = useState(profileUser?.username || '');
+  const [editBio, setEditBio] = useState(profileUser?.bio || '');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editMsg, setEditMsg] = useState(null);
   const isMe = Boolean(currentUser?.id) && currentUser.id === profileUser?.id;
   const canPost = isMe || isFriendOfUser;
   const isPrivateLocked = !isMe && profileUser?.is_private && !isFriendOfUser;
@@ -1207,6 +1224,34 @@ function ProfileWall({
     if (!currentUser?.id || profileSection !== 'bookmarks') return
     bookmarksService.getAll(currentUser.id).then(setBookmarks)
   }, [currentUser?.id, profileSection])
+
+  useEffect(() => {
+    if (!editingProfile) {
+      setEditName(profileUser?.name || '');
+      setEditUsername(profileUser?.username || '');
+      setEditBio(profileUser?.bio || '');
+      setEditMsg(null);
+    }
+  }, [profileUser?.id, editingProfile]);
+
+  async function saveProfileInline(e) {
+    e.preventDefault();
+    if (!editName.trim()) return;
+    setEditSaving(true);
+    setEditMsg(null);
+    const updates = { name: editName.trim(), bio: editBio.trim() };
+    if (editUsername.trim() && editUsername.trim() !== profileUser?.username)
+      updates.username = editUsername.trim();
+    const res = await authService.updateProfile(currentUser.id, updates);
+    setEditSaving(false);
+    if (res.success) {
+      setEditMsg({ ok: true, text: 'Сохранено!' });
+      onUserUpdate?.({ ...currentUser, name: res.user.name, bio: res.user.bio || '', username: res.user.username });
+      setTimeout(() => { setEditingProfile(false); setEditMsg(null); }, 800);
+    } else {
+      setEditMsg({ ok: false, text: res.error });
+    }
+  }
 
   async function handleFollow() {
     if (followLoading || following === null) return;
@@ -1411,31 +1456,61 @@ function ProfileWall({
             )}
           </div>
           <div style={{ marginTop: 10 }}>
-            <div style={{ fontWeight: 800, fontSize: 17 }}>
-              {profileUser?.name}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.45)",
-                marginBottom: 6,
-              }}
-            >
-              @{profileUser?.username}
-            </div>
-            {profileUser?.bio && (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "rgba(255,255,255,0.7)",
-                  lineHeight: 1.5,
-                  marginBottom: 8,
-                }}
-              >
-                {profileUser.bio}
-              </div>
+            {editingProfile ? (
+              <form onSubmit={saveProfileInline} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  value={editName} onChange={e => setEditName(e.target.value)}
+                  placeholder="Имя" autoFocus
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px', color: 'white', fontSize: 15, fontWeight: 700, outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                />
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>@</span>
+                  <input
+                    value={editUsername} onChange={e => setEditUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase())}
+                    placeholder="username"
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px 8px 24px', color: 'white', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <textarea
+                  value={editBio} onChange={e => setEditBio(e.target.value)}
+                  placeholder="О себе..."
+                  rows={2}
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px', color: 'white', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit' }}
+                />
+                {editMsg && <div style={{ fontSize: 12, color: editMsg.ok ? '#4ade80' : '#f87171' }}>{editMsg.text}</div>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="submit" disabled={editSaving}
+                    style={{ flex: 1, background: 'rgba(255,255,255,0.13)', border: 'none', borderRadius: 10, padding: '8px', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                    {editSaving ? '...' : 'Сохранить'}
+                  </button>
+                  <button type="button" onClick={() => setEditingProfile(false)}
+                    style={{ flex: 1, background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 13 }}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontWeight: 800, fontSize: 17 }}>{profileUser?.name}</div>
+                  {isMe && (
+                    <button onClick={() => setEditingProfile(true)} title="Редактировать профиль"
+                      style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '3px 8px', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                      ✏️ Изменить
+                    </button>
+                  )}
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
+                  @{profileUser?.username}
+                </div>
+                {profileUser?.bio && (
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", lineHeight: 1.5, marginBottom: 8 }}>
+                    {profileUser.bio}
+                  </div>
+                )}
+              </>
             )}
-            <div style={{ display: "flex", gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: "flex", gap: 16, alignItems: 'center', flexWrap: 'wrap', marginTop: editingProfile ? 4 : 0 }}>
               <button onClick={() => openFollowModal("followers")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", padding: 0, fontSize: 13 }}>
                 <b style={{ color: "white" }}>{followerCount}</b> подписчиков
               </button>
@@ -1658,11 +1733,6 @@ function ProfileWall({
   );
 }
 function SettingsPanel({ user, onUserUpdate, onLogout }) {
-  const [name, setName] = useState(user?.name || "");
-  const [username, setUsername] = useState(user?.username || "");
-  const [bio, setBio] = useState(user?.bio || "");
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileMsg, setProfileMsg] = useState(null);
   const [isPrivate, setIsPrivate] = useState(user?.is_private || false);
 
   const [oldPwd, setOldPwd] = useState("");
@@ -1670,23 +1740,6 @@ function SettingsPanel({ user, onUserUpdate, onLogout }) {
   const [confirmPwd, setConfirmPwd] = useState("");
   const [pwdSaving, setPwdSaving] = useState(false);
   const [pwdMsg, setPwdMsg] = useState(null);
-
-  async function saveProfile(e) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setProfileSaving(true);
-    setProfileMsg(null);
-    const updates = { name, bio };
-    if (username.trim() && username.trim() !== user?.username) updates.username = username.trim();
-    const res = await authService.updateProfile(user.id, updates);
-    setProfileSaving(false);
-    if (res.success) {
-      setProfileMsg({ ok: true, text: "Сохранено!" });
-      onUserUpdate?.({ ...user, name: res.user.name, bio: res.user.bio || "", username: res.user.username });
-    } else {
-      setProfileMsg({ ok: false, text: res.error });
-    }
-  }
 
   async function savePassword(e) {
     e.preventDefault();
@@ -1746,64 +1799,9 @@ function SettingsPanel({ user, onUserUpdate, onLogout }) {
 
   return (
     <div>
-      <div style={sec}>
-        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14 }}>
-          Профиль
-        </div>
-        <form
-          onSubmit={saveProfile}
-          style={{ display: "flex", flexDirection: "column", gap: 10 }}
-        >
-          <div>
-            <label style={label}>Имя</label>
-            <input style={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ваше имя" />
-          </div>
-          <div>
-            <label style={label}>Username</label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.35)', fontSize: 14, pointerEvents: 'none' }}>@</span>
-              <input style={{ ...inp, paddingLeft: 26 }} value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase())} placeholder="username" />
-            </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>Только латиница, цифры и _</div>
-          </div>
-          <div>
-            <label style={label}>О себе</label>
-            <textarea
-              style={{ ...inp, resize: "none", height: 72, lineHeight: 1.5 }}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Расскажите о себе..."
-            />
-          </div>
-          {profileMsg && (
-            <div
-              style={{
-                fontSize: 13,
-                color: profileMsg.ok ? "#4ade80" : "#f87171",
-              }}
-            >
-              {profileMsg.text}
-            </div>
-          )}
-          <button
-            type="submit"
-            disabled={profileSaving}
-            style={{
-              background: "rgba(255,255,255,0.12)",
-              border: "none",
-              borderRadius: 11,
-              padding: "10px",
-              color: "white",
-              fontWeight: 700,
-              cursor: "pointer",
-              fontSize: 14,
-            }}
-          >
-            {profileSaving ? "Сохранение..." : "Сохранить"}
-          </button>
-        </form>
+      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginBottom: 16, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.07)' }}>
+        Имя, username и фото — в профиле через кнопку «✏️ Изменить»
       </div>
-
       <div style={sec}>
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14 }}>
           Сменить пароль
@@ -2084,9 +2082,9 @@ function StoryViewCount({ storyId }) {
 function StoriesBar({ currentUser, followingIds, onUserClick }) {
   const [stories, setStories] = useState([])
   const [myStories, setMyStories] = useState([])
-  const [viewer, setViewer] = useState(null) // { list, index }
+  const [viewer, setViewer] = useState(null)
+  const [editorFile, setEditorFile] = useState(null)
   const fileRef = useRef(null)
-  const [uploading, setUploading] = useState(false)
 
   const loadStories = useCallback(async () => {
     if (!currentUser?.id) return
@@ -2110,64 +2108,658 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
     return [...map.values()]
   }, [stories])
 
-  async function handleUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    setUploading(true)
-    try {
-      const res = await storiesService.create(currentUser.id, file)
-      if (res.success) { notificationService.showNotification('Сторис добавлен!', '', 'success'); loadStories() }
-      else notificationService.showNotification('Ошибка', res.error, 'error')
-    } catch (e) {
-      notificationService.showNotification('Ошибка', e.message, 'error')
-    }
-    setUploading(false)
-  }
-
   if (grouped.length === 0 && myStories.length === 0 && !currentUser) return null
 
   return (
     <>
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '4px 0 12px', scrollbarWidth: 'none' }}>
-        <label htmlFor="storyFileInput" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', position: 'relative' }}>
-            {uploading ? <div style={{ width: 20, height: 20, border: '2px solid #a78bfa', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> : (
-              <>
-                <Avatar url={currentUser?.avatar_url} name={currentUser?.name} size={52} />
-                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18, borderRadius: '50%', background: '#a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, border: '2px solid #0b0b0b' }}>+</div>
-              </>
-            )}
-          </div>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Мой сторис</span>
-        </label>
-        <input id="storyFileInput" type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
-        {grouped.map(({ user, items }) => {
-          const hasMe = user.id === currentUser?.id
-          return (
-            <div key={user.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}
-              onClick={() => { setViewer({ list: items, index: 0 }); if (currentUser?.id) storiesService.addView(items[0].id, currentUser.id) }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', padding: 2, background: 'linear-gradient(135deg,#a78bfa,#ec4899)', flexShrink: 0 }}>
-                <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '2px solid #0b0b0b', overflow: 'hidden' }}>
-                  <Avatar url={user.avatar_url} name={user.name} size={52} />
-                </div>
-              </div>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</span>
+        {currentUser && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}
+            onClick={() => fileRef.current?.click()}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', position: 'relative' }}>
+              <Avatar url={currentUser?.avatar_url} name={currentUser?.name} size={52} />
+              <div style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18, borderRadius: '50%', background: '#a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, border: '2px solid #0b0b0b' }}>+</div>
             </div>
-          )
-        })}
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Мой сторис</span>
+          </div>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) setEditorFile(f); e.target.value = ''; }} />
+
+        {grouped.map(({ user, items }) => (
+          <div key={user.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}
+            onClick={() => { setViewer({ list: items, index: 0 }); if (currentUser?.id) storiesService.addView(items[0].id, currentUser.id) }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', padding: 2, background: 'linear-gradient(135deg,#a78bfa,#ec4899)', flexShrink: 0 }}>
+              <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '2px solid #0b0b0b', overflow: 'hidden' }}>
+                <Avatar url={user.avatar_url} name={user.name} size={52} />
+              </div>
+            </div>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</span>
+          </div>
+        ))}
       </div>
+
       {viewer && (
-        <StoryViewer
-          viewer={viewer}
-          currentUser={currentUser}
-          onClose={() => setViewer(null)}
-          onNext={() => setViewer(v => { const next = { ...v, index: v.index + 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })}
-          onPrev={() => setViewer(v => { const next = { ...v, index: v.index - 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index].id, currentUser.id); return next })}
-        />
+        <StoryViewer viewer={viewer} currentUser={currentUser} onClose={() => setViewer(null)}
+          onNext={() => setViewer(v => { const next = { ...v, index: v.index + 1 }; if (current?.id) storiesService.addView(v.list[next.index]?.id, currentUser.id); return next })}
+          onPrev={() => setViewer(v => { const next = { ...v, index: v.index - 1 }; if (currentUser?.id) storiesService.addView(v.list[next.index]?.id, currentUser.id); return next })} />
+      )}
+
+      {editorFile && (
+        <StoryEditor file={editorFile} currentUser={currentUser}
+          onClose={() => setEditorFile(null)}
+          onPublished={() => { setEditorFile(null); loadStories(); notificationService.showNotification('Сторис опубликован!', '', 'success'); }} />
       )}
     </>
   )
+}
+
+// ─── StoryEditor ───────────────────────────────────────────────────────────────
+const STICKER_EMOJIS = ['😂','❤️','🔥','👍','😍','🎉','💯','😭','✨','🙏','😎','💪','🫶','🥹','😢','😡','👀','💀','🤩','🥳','🌸','🍕','🎵','⭐','🚀']
+const TEXT_COLORS = ['#ffffff','#000000','#ffdd57','#ff4757','#2ed573','#1e90ff','#ff6b81','#a29bfe']
+
+function StoryEditor({ file, currentUser, onClose, onPublished }) {
+  const [previewUrl] = useState(() => URL.createObjectURL(file))
+  const [textLayers, setTextLayers] = useState([])
+  const [stickers, setStickers] = useState([])
+  const [activeText, setActiveText] = useState(null) // index
+  const [showTextInput, setShowTextInput] = useState(false)
+  const [newTextValue, setNewTextValue] = useState('')
+  const [textColor, setTextColor] = useState('#ffffff')
+  const [showStickers, setShowStickers] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const containerRef = useRef(null)
+  const dragRef = useRef(null)
+
+  useEffect(() => () => URL.revokeObjectURL(previewUrl), [previewUrl])
+
+  function addText() {
+    if (!newTextValue.trim()) return
+    setTextLayers(prev => [...prev, { text: newTextValue.trim(), color: textColor, size: 28, xPct: 50, yPct: 50 }])
+    setNewTextValue('')
+    setShowTextInput(false)
+  }
+
+  function addSticker(emoji) {
+    setStickers(prev => [...prev, { emoji, size: 48, xPct: 30 + Math.random() * 40, yPct: 30 + Math.random() * 40 }])
+    setShowStickers(false)
+  }
+
+  function startDragLayer(type, idx, e) {
+    e.preventDefault()
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    dragRef.current = { type, idx }
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+
+    function onMove(ev) {
+      const cx = ev.touches ? ev.touches[0].clientX : ev.clientX
+      const cy = ev.touches ? ev.touches[0].clientY : ev.clientY
+      const xPct = ((cx - rect.left) / rect.width) * 100
+      const yPct = ((cy - rect.top) / rect.height) * 100
+      if (type === 'text') setTextLayers(prev => prev.map((l, i) => i === idx ? { ...l, xPct, yPct } : l))
+      if (type === 'sticker') setStickers(prev => prev.map((s, i) => i === idx ? { ...s, xPct, yPct } : s))
+    }
+    function onUp() {
+      dragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchend', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchend', onUp)
+  }
+
+  async function publish() {
+    if (publishing) return
+    setPublishing(true)
+    try {
+      const composed = await composeStory(file, textLayers, stickers)
+      const composedFile = new File([composed], 'story.jpg', { type: 'image/jpeg' })
+      const res = await storiesService.create(currentUser.id, composedFile)
+      if (res.success) onPublished()
+      else { notificationService.showNotification('Ошибка', res.error, 'error'); setPublishing(false) }
+    } catch (err) {
+      notificationService.showNotification('Ошибка', err.message, 'error')
+      setPublishing(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#000', display: 'flex', flexDirection: 'column' }}>
+      {/* Canvas */}
+      <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111' }}>
+        <img src={previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', userSelect: 'none', pointerEvents: 'none' }} />
+
+        {/* Text layers */}
+        {textLayers.map((t, i) => (
+          <div key={i}
+            onMouseDown={e => startDragLayer('text', i, e)}
+            onTouchStart={e => startDragLayer('text', i, e)}
+            style={{ position: 'absolute', left: `${t.xPct}%`, top: `${t.yPct}%`, transform: 'translate(-50%,-50%)', color: t.color, fontSize: t.size, fontWeight: 800, textShadow: '0 2px 8px rgba(0,0,0,0.7)', cursor: 'grab', userSelect: 'none', whiteSpace: 'pre-wrap', textAlign: 'center', padding: '4px 8px', touchAction: 'none' }}>
+            {t.text}
+            <button onClick={() => setTextLayers(prev => prev.filter((_, j) => j !== i))}
+              style={{ position: 'absolute', top: -8, right: -8, background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+        ))}
+
+        {/* Sticker layers */}
+        {stickers.map((s, i) => (
+          <div key={i}
+            onMouseDown={e => startDragLayer('sticker', i, e)}
+            onTouchStart={e => startDragLayer('sticker', i, e)}
+            style={{ position: 'absolute', left: `${s.xPct}%`, top: `${s.yPct}%`, transform: 'translate(-50%,-50%)', fontSize: s.size, cursor: 'grab', userSelect: 'none', touchAction: 'none', lineHeight: 1 }}>
+            {s.emoji}
+            <button onClick={() => setStickers(prev => prev.filter((_, j) => j !== i))}
+              style={{ position: 'absolute', top: -8, right: -8, background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Text input overlay */}
+      {showTextInput && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 10001, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {TEXT_COLORS.map(c => (
+              <button key={c} onClick={() => setTextColor(c)}
+                style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: textColor === c ? '3px solid white' : '2px solid rgba(255,255,255,0.3)', cursor: 'pointer' }} />
+            ))}
+          </div>
+          <textarea value={newTextValue} onChange={e => setNewTextValue(e.target.value)} placeholder="Введи текст..."
+            autoFocus rows={3}
+            style={{ width: '100%', maxWidth: 340, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 14, padding: '12px 14px', color: textColor, fontSize: 20, fontWeight: 700, outline: 'none', resize: 'none', textAlign: 'center', fontFamily: 'inherit' }} />
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={addText} style={{ background: 'white', color: 'black', border: 'none', borderRadius: 12, padding: '10px 24px', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>Добавить</button>
+            <button onClick={() => setShowTextInput(false)} style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, cursor: 'pointer' }}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {/* Sticker picker overlay */}
+      {showStickers && (
+        <div style={{ position: 'absolute', bottom: 80, left: 0, right: 0, zIndex: 10001, background: 'rgba(15,15,25,0.95)', padding: '16px 12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {STICKER_EMOJIS.map(e => (
+              <button key={e} onClick={() => addSticker(e)}
+                style={{ background: 'none', border: 'none', fontSize: 32, cursor: 'pointer', padding: 4, borderRadius: 8 }}>{e}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom toolbar */}
+      <div style={{ background: 'rgba(0,0,0,0.85)', padding: '12px 20px', paddingBottom: 'calc(12px + env(safe-area-inset-bottom,0px))', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 14px', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        <button onClick={() => { setShowStickers(false); setShowTextInput(v => !v); }}
+          style={{ background: showTextInput ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+          Аа
+        </button>
+        <button onClick={() => { setShowTextInput(false); setShowStickers(v => !v); }}
+          style={{ background: showStickers ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 14px', cursor: 'pointer', fontSize: 20 }}>
+          😊
+        </button>
+        <div style={{ flex: 1 }} />
+        <button onClick={publish} disabled={publishing}
+          style={{ background: 'linear-gradient(135deg,#a78bfa,#ec4899)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 22px', fontWeight: 800, fontSize: 14, cursor: publishing ? 'default' : 'pointer', opacity: publishing ? 0.7 : 1 }}>
+          {publishing ? 'Публикую...' : 'Опубликовать →'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── ChannelsView ──────────────────────────────────────────────────────────────
+function ChannelsView({ currentUser, onOpenChannel }) {
+  const [myChannels, setMyChannels] = useState([]);
+  const [allChannels, setAllChannels] = useState([]);
+  const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [my, all] = await Promise.all([
+        currentUser?.id ? channelsService.getSubscribedChannels(currentUser.id) : [],
+        channelsService.getAll(20),
+      ]);
+      setMyChannels(my);
+      setAllChannels(all);
+      setLoading(false);
+    })();
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!search.trim()) { setSearchResults(null); return; }
+    const t = setTimeout(async () => {
+      const res = await channelsService.search(search);
+      setSearchResults(res);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const displayList = searchResults ?? allChannels;
+  const myIds = new Set(myChannels.map(c => c.id));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск каналов..."
+            style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '9px 12px 9px 34px', color: 'white', fontSize: 14, outline: 'none' }} />
+        </div>
+        {currentUser && (
+          <button onClick={() => setCreateOpen(true)}
+            style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '9px 14px', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>
+            + Создать
+          </button>
+        )}
+      </div>
+
+      {myChannels.length > 0 && !search && (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, marginBottom: 8 }}>МОИ КАНАЛЫ</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {myChannels.map(ch => (
+              <ChannelItem key={ch.id} channel={ch} isSubscribed role={ch.role} onOpen={() => onOpenChannel(ch)} currentUser={currentUser}
+                onUnsubscribe={() => setMyChannels(prev => prev.filter(c => c.id !== ch.id))} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        {!search && <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, marginBottom: 8 }}>ВСЕ КАНАЛЫ</div>}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Загрузка...</div>
+        ) : displayList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>
+            {search ? 'Ничего не найдено' : 'Пока нет каналов — создай первый!'}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {displayList.map(ch => (
+              <ChannelItem key={ch.id} channel={ch} isSubscribed={myIds.has(ch.id)} onOpen={() => onOpenChannel(ch)} currentUser={currentUser}
+                onSubscribe={(c) => setMyChannels(prev => [...prev, c])}
+                onUnsubscribe={() => setMyChannels(prev => prev.filter(c => c.id !== ch.id))} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {createOpen && (
+        <CreateChannelModal currentUser={currentUser} onClose={() => setCreateOpen(false)}
+          onCreate={(ch) => { setMyChannels(prev => [...prev, { ...ch, role: 'admin' }]); setAllChannels(prev => [ch, ...prev]); setCreateOpen(false); onOpenChannel(ch); }} />
+      )}
+    </div>
+  );
+}
+
+function ChannelItem({ channel, isSubscribed, role, onOpen, currentUser, onSubscribe, onUnsubscribe }) {
+  const [subbed, setSubbed] = useState(isSubscribed);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSub(e) {
+    e.stopPropagation();
+    if (!currentUser) return;
+    setLoading(true);
+    if (subbed) {
+      await channelsService.unsubscribe(channel.id, currentUser.id);
+      setSubbed(false);
+      onUnsubscribe?.();
+    } else {
+      await channelsService.subscribe(channel.id, currentUser.id);
+      setSubbed(true);
+      onSubscribe?.({ ...channel, role: 'member' });
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', transition: 'background 0.15s' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: channel.avatar_url ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: channel.avatar_url ? `url(${channel.avatar_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 18 }}>
+        {!channel.avatar_url && channel.name?.[0]?.toUpperCase()}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: 'white' }}>{channel.name} {role === 'admin' && <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.2)', color: '#a78bfa', borderRadius: 6, padding: '1px 5px', marginLeft: 4 }}>admin</span>}</div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>@{channel.username}{channel.description ? ` · ${channel.description.slice(0, 40)}` : ''}</div>
+      </div>
+      {currentUser && role !== 'admin' && (
+        <button onClick={handleSub} disabled={loading}
+          style={{ padding: '5px 12px', borderRadius: 10, border: subbed ? '1px solid rgba(255,255,255,0.15)' : 'none', background: subbed ? 'transparent' : 'rgba(99,102,241,0.7)', color: 'white', fontWeight: 700, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>
+          {loading ? '...' : subbed ? 'Отписаться' : 'Подписаться'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CreateChannelModal({ currentUser, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [desc, setDesc] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim() || !username.trim()) { setError('Заполни название и username'); return; }
+    setSaving(true);
+    setError('');
+    const res = await channelsService.create(currentUser.id, { name, username, description: desc });
+    setSaving(false);
+    if (res.success) { onCreate(res.channel); }
+    else setError(res.error);
+  }
+
+  const inp = { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 14px', color: 'white', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '20px 20px 0 0', padding: 24, width: '100%', maxWidth: 480, paddingBottom: 'calc(24px + env(safe-area-inset-bottom,0px))' }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 18 }}>Новый канал</div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Название канала" style={inp} autoFocus />
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>@</span>
+            <input value={username} onChange={e => setUsername(e.target.value.replace(/[^a-z0-9_]/g, '').toLowerCase())} placeholder="username" style={{ ...inp, paddingLeft: 28 }} />
+          </div>
+          <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Описание (необязательно)" rows={2} style={{ ...inp, resize: 'none' }} />
+          {error && <div style={{ fontSize: 12, color: '#f87171' }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button type="submit" disabled={saving} style={{ flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', borderRadius: 12, padding: '11px', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+              {saving ? 'Создание...' : 'Создать'}
+            </button>
+            <button type="button" onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '11px', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 14 }}>
+              Отмена
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── ChannelPage ───────────────────────────────────────────────────────────────
+function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [membership, setMembership] = useState(null);
+  const [subLoading, setSubLoading] = useState(false);
+  const [subCount, setSubCount] = useState(0);
+  const [composerText, setComposerText] = useState('');
+  const [composerFile, setComposerFile] = useState(null);
+  const [posting, setPosting] = useState(false);
+  const [editingChannel, setEditingChannel] = useState(false);
+  const fileRef = useRef(null);
+  const isAdmin = membership?.role === 'admin';
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [p, m, cnt] = await Promise.all([
+        channelsService.getPosts(channel.id),
+        currentUser?.id ? channelsService.getMembership(channel.id, currentUser.id) : null,
+        channelsService.getSubscriberCount(channel.id),
+      ]);
+      const postIds = p.map(x => x.id);
+      const liked = currentUser?.id && postIds.length ? await channelsService.getLikedPostIds(currentUser.id, postIds) : new Set();
+      setPosts(p.map(x => ({ ...x, _liked: liked.has(x.id) })));
+      setMembership(m);
+      setSubCount(cnt);
+      setLoading(false);
+    })();
+  }, [channel.id, currentUser?.id]);
+
+  async function handleSubscribe() {
+    if (!currentUser || subLoading) return;
+    setSubLoading(true);
+    if (membership) {
+      await channelsService.unsubscribe(channel.id, currentUser.id);
+      setMembership(null);
+      setSubCount(c => c - 1);
+    } else {
+      await channelsService.subscribe(channel.id, currentUser.id);
+      setMembership({ role: 'member' });
+      setSubCount(c => c + 1);
+    }
+    setSubLoading(false);
+  }
+
+  async function handlePost(e) {
+    e.preventDefault();
+    if (!composerText.trim() && !composerFile) return;
+    setPosting(true);
+    let mediaUrl = null;
+    if (composerFile) {
+      try { mediaUrl = await postsService.uploadPostImage(composerFile, currentUser.id); } catch {}
+    }
+    const res = await channelsService.createPost(channel.id, currentUser.id, composerText, mediaUrl);
+    if (res.success) {
+      const newPost = { ...res.post, author: { id: currentUser.id, name: currentUser.name, username: currentUser.username, avatar_url: currentUser.avatar_url }, _likeCount: 0, _commentCount: 0, _liked: false };
+      setPosts(prev => [newPost, ...prev]);
+      setComposerText('');
+      setComposerFile(null);
+    }
+    setPosting(false);
+  }
+
+  return (
+    <div>
+      {/* Channel header */}
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ height: 100, background: 'linear-gradient(135deg,#1e1b4b,#312e81)', position: 'relative' }}>
+          {isAdmin && (
+            <button onClick={() => setEditingChannel(true)}
+              style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+              Настройки
+            </button>
+          )}
+        </div>
+        <div style={{ padding: '0 16px 16px', position: 'relative' }}>
+          <div style={{ marginTop: -24, marginBottom: 10 }}>
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: channel.avatar_url ? undefined : 'linear-gradient(135deg,#6366f1,#8b5cf6)', backgroundImage: channel.avatar_url ? `url(${channel.avatar_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', border: '3px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 22 }}>
+              {!channel.avatar_url && channel.name?.[0]?.toUpperCase()}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 17 }}>{channel.name}</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>@{channel.username}</div>
+              {channel.description && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 6, lineHeight: 1.5 }}>{channel.description}</div>}
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>{subCount} подписчиков</div>
+            </div>
+            {currentUser && membership?.role !== 'admin' && (
+              <button onClick={handleSubscribe} disabled={subLoading}
+                style={{ padding: '8px 16px', borderRadius: 12, border: membership ? '1px solid rgba(255,255,255,0.2)' : 'none', background: membership ? 'transparent' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
+                {subLoading ? '...' : membership ? 'Отписаться' : 'Подписаться'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Composer for admins */}
+      {isAdmin && (
+        <form onSubmit={handlePost} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', padding: 14, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <textarea value={composerText} onChange={e => setComposerText(e.target.value)} placeholder="Новая публикация в канале..."
+            rows={3} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 12px', color: 'white', fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit' }} />
+          {composerFile && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+              <span>📎 {composerFile.name}</span>
+              <button type="button" onClick={() => setComposerFile(null)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0, fontSize: 14 }}>✕</button>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => fileRef.current?.click()}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '7px 12px', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 13 }}>
+              📷 Фото
+            </button>
+            <button type="submit" disabled={posting || (!composerText.trim() && !composerFile)}
+              style={{ flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', borderRadius: 10, padding: '7px', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: posting ? 0.6 : 1 }}>
+              {posting ? 'Публикация...' : 'Опубликовать'}
+            </button>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { setComposerFile(e.target.files?.[0] || null); e.target.value = ''; }} />
+        </form>
+      )}
+
+      {/* Posts */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.3)' }}>Загрузка...</div>
+      ) : posts.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>
+          {isAdmin ? 'Опубликуй первый пост в канале' : 'Публикаций пока нет'}
+        </div>
+      ) : (
+        posts.map(p => <ChannelPostCard key={p.id} post={p} currentUser={currentUser} isAdmin={isAdmin} onUserClick={onUserClick}
+          onLike={(id, liked, delta) => setPosts(prev => prev.map(x => x.id === id ? { ...x, _liked: liked, _likeCount: x._likeCount + delta } : x))}
+          onDelete={(id) => setPosts(prev => prev.filter(x => x.id !== id))} />)
+      )}
+
+      {editingChannel && (
+        <ChannelSettingsModal channel={channel} currentUser={currentUser}
+          onClose={() => setEditingChannel(false)}
+          onUpdated={(updates) => Object.assign(channel, updates)} />
+      )}
+    </div>
+  );
+}
+
+function ChannelPostCard({ post, currentUser, isAdmin, onLike, onDelete, onUserClick }) {
+  const [liked, setLiked] = useState(post._liked || false);
+  const [likeCount, setLikeCount] = useState(post._likeCount || 0);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [likeAnim, setLikeAnim] = useState(false);
+
+  async function handleLike() {
+    if (!currentUser) return;
+    const prev = liked;
+    setLiked(!prev); setLikeCount(c => prev ? c - 1 : c + 1);
+    if (!prev) { setLikeAnim(true); setTimeout(() => setLikeAnim(false), 400); }
+    const res = await channelsService.toggleLike(post.id, currentUser.id);
+    onLike?.(post.id, res.liked, res.liked ? 1 : -1);
+  }
+
+  async function openComments() {
+    if (!commentsLoaded) { const data = await channelsService.getComments(post.id); setComments(data); setCommentsLoaded(true); }
+    setCommentsOpen(o => !o);
+  }
+
+  async function submitComment(e) {
+    e.preventDefault();
+    if (!commentText.trim() || !currentUser) return;
+    const res = await channelsService.addComment(post.id, currentUser.id, commentText);
+    if (res.success) {
+      setComments(prev => [...prev, { ...res.comment, user: { id: currentUser.id, name: currentUser.name, username: currentUser.username, avatar_url: currentUser.avatar_url } }]);
+      setCommentText('');
+    }
+  }
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', marginBottom: 12, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: onUserClick ? 'pointer' : undefined }} onClick={() => onUserClick?.(post.author)}>
+            <Avatar url={post.author?.avatar_url} name={post.author?.name} size={34} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{post.author?.name}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{new Date(post.created_at).toLocaleDateString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+          </div>
+          {(isAdmin || currentUser?.id === post.author_id) && (
+            <button onClick={async () => { if (await showConfirm('Удалить публикацию?')) { await channelsService.deletePost(post.id); onDelete?.(post.id); } }}
+              style={{ background: 'none', border: 'none', color: 'rgba(255,100,100,0.5)', cursor: 'pointer', padding: 4, fontSize: 14 }}>✕</button>
+          )}
+        </div>
+        {post.content && <div style={{ fontSize: 14, lineHeight: 1.6, color: 'rgba(255,255,255,0.85)', marginBottom: post.media_url ? 10 : 0 }}>{post.content}</div>}
+        {post.media_url && <img src={post.media_url} alt="" style={{ width: '100%', borderRadius: 10, maxHeight: 400, objectFit: 'cover', display: 'block', marginTop: 8 }} />}
+      </div>
+      <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <button onClick={handleLike} className={likeAnim ? 'heart-pop' : ''}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: 'none', color: liked ? '#ef4444' : 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '5px 8px', borderRadius: 8, fontSize: 13 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'}><path d="M12 21s-7-4.4-9.3-9A5.7 5.7 0 0 1 12 6a5.7 5.7 0 0 1 9.3 6c-2.3 4.6-9.3 9-9.3 9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
+          {likeCount}
+        </button>
+        <button onClick={openComments}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '5px 8px', borderRadius: 8, fontSize: 13 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
+          {post._commentCount || (commentsLoaded ? comments.length : 0)}
+        </button>
+      </div>
+      {commentsOpen && (
+        <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {comments.map(c => (
+            <div key={c.id} style={{ display: 'flex', gap: 8 }}>
+              <Avatar url={c.user?.avatar_url} name={c.user?.name} size={26} />
+              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '6px 10px', flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 2 }}>{c.user?.name}</div>
+                <div style={{ fontSize: 13 }}>{c.content}</div>
+              </div>
+            </div>
+          ))}
+          {currentUser && (
+            <form onSubmit={submitComment} style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <input value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="Комментарий..."
+                style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '7px 12px', color: 'white', fontSize: 13, outline: 'none' }} />
+              <button type="submit" style={{ background: 'rgba(99,102,241,0.7)', border: 'none', borderRadius: 10, padding: '7px 12px', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>→</button>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChannelSettingsModal({ channel, currentUser, onClose, onUpdated }) {
+  const [name, setName] = useState(channel.name || '');
+  const [desc, setDesc] = useState(channel.description || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSave(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    const res = await channelsService.update(channel.id, { name: name.trim(), description: desc.trim() });
+    setSaving(false);
+    if (res.success) { onUpdated?.({ name: name.trim(), description: desc.trim() }); onClose(); }
+    else setError(res.error);
+  }
+
+  const inp = { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 14px', color: 'white', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '20px 20px 0 0', padding: 24, width: '100%', maxWidth: 480, paddingBottom: 'calc(24px + env(safe-area-inset-bottom,0px))' }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 18 }}>Настройки канала</div>
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Название" style={inp} autoFocus />
+          <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Описание" rows={2} style={{ ...inp, resize: 'none' }} />
+          {error && <div style={{ fontSize: 12, color: '#f87171' }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button type="submit" disabled={saving} style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 12, padding: '11px', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+              {saving ? '...' : 'Сохранить'}
+            </button>
+            <button type="button" onClick={onClose} style={{ flex: 1, background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '11px', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 14 }}>
+              Отмена
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function GlobalFeed({
@@ -2885,6 +3477,8 @@ export default function App() {
 
   // навигация
   const [activeTab, setActiveTab] = useState("chats");
+  const [feedSubTab, setFeedSubTab] = useState("feed");
+  const [viewingChannel, setViewingChannel] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // чаты
@@ -2929,23 +3523,14 @@ export default function App() {
               ? '🎤 Голос'
               : msg.content || 'Новое сообщение';
           if (chatExists) {
-            setChats((prev) =>
-              [...prev]
-                .map((c) =>
-                  c.id === msg.chat_id
-                    ? {
-                        ...c,
-                        lastMessage: nextLastMessage,
-                        lastMessageTime: msg.created_at,
-                      }
-                    : c,
-                )
-                .sort(
-                  (a, b) =>
-                    new Date(b.lastMessageTime).getTime() -
-                    new Date(a.lastMessageTime).getTime(),
-                ),
-            );
+            setChats((prev) => {
+              const updated = [...prev].map((c) =>
+                c.id === msg.chat_id
+                  ? { ...c, lastMessage: nextLastMessage, lastMessageTime: msg.created_at }
+                  : c,
+              ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+              return [...updated.filter(c => c.pinned), ...updated.filter(c => !c.pinned)];
+            });
             setUnreadCounts(prev => ({ ...prev, [msg.chat_id]: (prev[msg.chat_id] || 0) + 1 }));
           } else {
             const updated = await chatService.getChats(user.id);
@@ -3233,10 +3818,11 @@ export default function App() {
   }, [friendsSearch, activeTab, user?.id]);
 
   function scrollToBottom() {
-    setTimeout(() => {
-      if (chatBodyRef.current)
-        chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
-    }, 60);
+    requestAnimationFrame(() => {
+      if (chatBodyRef.current) {
+        chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight + 9999;
+      }
+    });
   }
 
   async function handleSend() {
@@ -3332,12 +3918,12 @@ export default function App() {
     if (!activeChatId) return
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      // Выбираем лучший поддерживаемый формат: iOS нужен mp4, Android/Chrome — webm
+      // mp4 — самый совместимый (Safari + Chrome + Android), webm — fallback
       const preferredType = [
+        'audio/mp4',
         'audio/webm;codecs=opus',
         'audio/webm',
         'audio/ogg;codecs=opus',
-        'audio/mp4',
       ].find(t => MediaRecorder.isTypeSupported(t)) || ''
       const mr = preferredType ? new MediaRecorder(stream, { mimeType: preferredType }) : new MediaRecorder(stream)
       audioChunksRef.current = []
@@ -3360,7 +3946,7 @@ export default function App() {
           notificationService.showNotification('Ошибка', 'Не удалось отправить голосовое', 'error')
         }
       }
-      mr.start()
+      mr.start(250)
       mediaRecorderRef.current = mr
       setRecording(true)
       setRecordingTime(0)
@@ -3748,6 +4334,16 @@ export default function App() {
           </div>
 
           <nav className="tabs">
+            <button className={`tab ${activeTab === "profile" ? "is-active" : ""}`} type="button"
+              onClick={() => { setActiveTab("profile"); setViewingUser(null); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /></svg></span>
+              <span className="tab__label">Профиль</span>
+            </button>
+            <button className={`tab ${activeTab === "explore" ? "is-active" : ""}`} type="button"
+              onClick={() => { setActiveTab("explore"); setSidebarOpen(false) }}>
+              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.6"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></span>
+              <span className="tab__label">Поиск</span>
+            </button>
             <button className={`tab ${activeTab === "chats" ? "is-active" : ""}`} type="button"
               onClick={() => { setActiveTab("chats"); setActiveChatId(null); setSidebarOpen(false) }}>
               <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7.5 18.5H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8.5a3 3 0 0 1-3 3h-5.2l-3.6 2.6a.9.9 0 0 1-1.4-.7v-1.9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg></span>
@@ -3764,16 +4360,6 @@ export default function App() {
               onClick={() => { setActiveTab("feed"); setSidebarOpen(false) }}>
               <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="10.5" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="17" width="11" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg></span>
               <span className="tab__label">Лента</span>
-            </button>
-            <button className={`tab ${activeTab === "explore" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("explore"); setSidebarOpen(false) }}>
-              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.6"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></span>
-              <span className="tab__label">Поиск</span>
-            </button>
-            <button className={`tab ${activeTab === "profile" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("profile"); setViewingUser(null); setSidebarOpen(false) }}>
-              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /></svg></span>
-              <span className="tab__label">Профиль</span>
             </button>
           </nav>
 
@@ -3811,7 +4397,10 @@ export default function App() {
                       <div className="dmSnippet">{safeText(chat.lastMessage || "Нет сообщений")}</div>
                     </div>
                     <div className="dmRight">
-                      <div className="dmTime">{formatTime(chat.lastMessageTime)}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {chat.pinned && <span style={{ fontSize: 12, color: '#f59e0b' }}>📌</span>}
+                        <div className="dmTime">{formatTime(chat.lastMessageTime)}</div>
+                      </div>
                       {unread > 0 && (
                         <div style={{ background: "#ef4444", color: "white", borderRadius: 10, fontSize: 10, fontWeight: 800, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
                           {unread > 99 ? "99+" : unread}
@@ -4030,6 +4619,19 @@ export default function App() {
                             strokeLinecap="round"
                           />
                         </svg>
+                      </button>
+                      <button className="iconBtn" title={activeChat?.pinned ? 'Открепить' : 'Закрепить'}
+                        style={{ color: activeChat?.pinned ? '#f59e0b' : 'rgba(255,255,255,0.45)' }}
+                        onClick={async () => {
+                          if (!activeChatId || !user?.id) return
+                          const wasPinned = activeChat?.pinned
+                          try { await supabase.from('chat_members').update({ pinned: !wasPinned }).eq('chat_id', activeChatId).eq('user_id', user.id) } catch {}
+                          setChats(prev => {
+                            const updated = prev.map(c => c.id === activeChatId ? { ...c, pinned: !wasPinned } : c)
+                            return [...updated.filter(c => c.pinned), ...updated.filter(c => !c.pinned)]
+                          })
+                        }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill={activeChat?.pinned ? 'currentColor' : 'none'}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
                       </button>
                       <button className="iconBtn" title={activeChat?.archived ? 'Из архива' : 'В архив'}
                         style={{ color: activeChat?.archived ? '#a78bfa' : 'rgba(255,255,255,0.45)' }}
@@ -4499,53 +5101,21 @@ export default function App() {
                         <div
                           key={f.id}
                           className="search-result-item"
-                          style={{ justifyContent: "space-between" }}
+                          style={{ justifyContent: "space-between", cursor: 'pointer' }}
+                          onClick={() => { setViewingUser(f); setActiveTab("profile"); setSidebarOpen(false); }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 12,
-                              alignItems: "center",
-                            }}
-                          >
-                            <Avatar
-                              url={f.avatar_url}
-                              name={f.name}
-                              size={42}
-                            />
+                          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                            <Avatar url={f.avatar_url} name={f.name} size={42} />
                             <div>
-                              <div style={{ fontWeight: 700 }}>
-                                {safeText(f.name)}
-                              </div>
+                              <div style={{ fontWeight: 700 }}>{safeText(f.name)}</div>
                               <div style={{ fontSize: 13, opacity: 0.5 }}>
-                                {f.bio
-                                  ? safeText(f.bio)
-                                  : `@${safeText(f.username)}`}
+                                {f.bio ? safeText(f.bio) : `@${safeText(f.username)}`}
                               </div>
                             </div>
                           </div>
-                          <div className="user-actions">
-                            <button
-                              className="btn is-outline"
-                              onClick={() => {
-                                setViewingUser(f);
-                                setActiveTab("profile");
-                              }}
-                            >
-                              Профиль
-                            </button>
-                            <button
-                              className="btn"
-                              onClick={() => startChatWith(f)}
-                            >
-                              Написать
-                            </button>
-                            <button
-                              className="btn is-outline"
-                              onClick={() => removeFriend(f.id)}
-                            >
-                              Отписаться
-                            </button>
+                          <div className="user-actions" onClick={e => e.stopPropagation()}>
+                            <button className="btn" onClick={() => startChatWith(f)}>Написать</button>
+                            <button className="btn is-outline" onClick={() => removeFriend(f.id)}>Отписаться</button>
                           </div>
                         </div>
                       ))}
@@ -4722,27 +5292,51 @@ export default function App() {
             className={`view ${activeTab === "feed" ? "is-active" : ""}`}
           >
             <div className="view-header">
-              <div className="view-header__title">Лента</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {feedSubTab === 'channels' && viewingChannel && (
+                  <button className="iconBtn" onClick={() => setViewingChannel(null)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                )}
+                <div className="view-header__title">
+                  {feedSubTab === 'feed' ? 'Лента' : viewingChannel ? viewingChannel.name : 'Каналы'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={() => { setFeedSubTab('feed'); setViewingChannel(null); }}
+                  style={{ padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: feedSubTab === 'feed' ? 'rgba(255,255,255,0.13)' : 'transparent', color: feedSubTab === 'feed' ? 'white' : 'rgba(255,255,255,0.4)' }}>
+                  Лента
+                </button>
+                <button onClick={() => setFeedSubTab('channels')}
+                  style={{ padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: feedSubTab === 'channels' ? 'rgba(255,255,255,0.13)' : 'transparent', color: feedSubTab === 'channels' ? 'white' : 'rgba(255,255,255,0.4)' }}>
+                  Каналы
+                </button>
+              </div>
             </div>
-            <div
-              className="view-content"
-              style={{ overflowY: "auto", padding: 20 }}
-            >
-              <GlobalFeed
-                currentUser={user}
-                onShareClick={setSharePost}
-                onUserClick={openProfile}
-                onMentionClick={handleMentionClick}
-                onNotify={(type, toId, entityId, preview) =>
-                  notificationsService.create(
-                    toId,
-                    type,
-                    user?.id,
-                    entityId,
-                    preview,
-                  )
-                }
-              />
+            <div className="view-content" style={{ overflowY: "auto", padding: 20 }}>
+              {feedSubTab === 'feed' ? (
+                <GlobalFeed
+                  currentUser={user}
+                  onShareClick={setSharePost}
+                  onUserClick={openProfile}
+                  onMentionClick={handleMentionClick}
+                  onNotify={(type, toId, entityId, preview) =>
+                    notificationsService.create(toId, type, user?.id, entityId, preview)
+                  }
+                />
+              ) : viewingChannel ? (
+                <ChannelPage
+                  channel={viewingChannel}
+                  currentUser={user}
+                  onBack={() => setViewingChannel(null)}
+                  onUserClick={openProfile}
+                />
+              ) : (
+                <ChannelsView
+                  currentUser={user}
+                  onOpenChannel={setViewingChannel}
+                />
+              )}
             </div>
           </section>
 
@@ -4863,6 +5457,7 @@ export default function App() {
                 }
                 onUserClick={openProfile}
                 onMentionClick={handleMentionClick}
+                onUserUpdate={(u) => setUser(u)}
                 onNotify={(type, toId, entityId, preview) =>
                   notificationsService.create(
                     toId,
@@ -4979,7 +5574,7 @@ export default function App() {
             className={`view ${activeTab === "settings" ? "is-active" : ""}`}
           >
             <div className="view-header">
-              <div className="view-header__title">Настройки</div>
+              <div className="view-header__title">Пароль и безопасность</div>
             </div>
             <div
               className="view-content"
@@ -5276,8 +5871,9 @@ export default function App() {
                             await chatService.sendMessage(c.id, user.id, "🎤 Голосовое сообщение");
                           }
                         } else {
+                          const senderName = msg.sender?.name || 'Неизвестный';
                           const text = msg.content?.trim() || "📎 Вложение";
-                          await chatService.sendMessage(c.id, user.id, text);
+                          await chatService.sendMessage(c.id, user.id, `⬆️ Переслано от ${senderName}:\n${text}`);
                         }
                         const updated = await chatService.getChats(user.id);
                         setChats(updated);

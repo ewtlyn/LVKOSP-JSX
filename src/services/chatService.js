@@ -9,12 +9,22 @@ export class ChatService {
   async getChats(userId) {
     try {
       // Query 1: memberships + chat data + archived in one shot
-      const { data: chatMemberships, error } = await supabase
+      let { data: chatMemberships, error } = await supabase
         .from("chat_members")
         .select(
-          `chat_id, archived, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar )`,
+          `chat_id, archived, pinned, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar )`,
         )
         .eq("user_id", userId);
+
+      if (error?.message?.includes('pinned')) {
+        // pinned column doesn't exist yet — fallback without it
+        ({ data: chatMemberships, error } = await supabase
+          .from("chat_members")
+          .select(
+            `chat_id, archived, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar )`,
+          )
+          .eq("user_id", userId));
+      }
 
       if (error || !chatMemberships?.length) return [];
 
@@ -54,6 +64,7 @@ export class ChatService {
             last_seen: null,
             unreadCount: 0,
             archived: membership.archived || false,
+            pinned: membership.pinned || false,
             isGroup: true,
             memberCount: otherMembers.length + 1,
           });
@@ -81,6 +92,7 @@ export class ChatService {
           last_seen: otherMember.last_seen || null,
           unreadCount: 0,
           archived: membership.archived || false,
+          pinned: membership.pinned || false,
           isGroup: false,
         });
       }
@@ -92,9 +104,10 @@ export class ChatService {
         if (!ex || new Date(chat.lastMessageTime) > new Date(ex.lastMessageTime))
           seen.set(key, chat);
       }
-      return [...seen.values()].sort(
+      const sorted = [...seen.values()].sort(
         (a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime),
       );
+      return [...sorted.filter(c => c.pinned), ...sorted.filter(c => !c.pinned)];
     } catch {
       return [];
     }
@@ -109,7 +122,10 @@ export class ChatService {
     if (!isImage && !isAudio) throw new Error("Неподдерживаемый тип файла");
     const ext = isAudio ? (mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm") : "jpg";
     const path = `${chatId}/${userId}_${Date.now()}.${ext}`;
-    const contentType = file.type || (isAudio ? "audio/webm" : "image/jpeg");
+    const rawType = file.type || "";
+    const contentType = isAudio
+      ? (rawType.includes("mp4") ? "audio/mp4" : rawType.includes("ogg") ? "audio/ogg" : "audio/webm")
+      : (rawType.split(";")[0] || "image/jpeg");
     const { error } = await Promise.race([
       supabase.storage.from("chat-media").upload(path, file, { upsert: true, contentType }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("Превышено время загрузки")), 30000)),

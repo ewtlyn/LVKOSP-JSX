@@ -8,8 +8,10 @@ import { NotificationService } from './notificationService.js'
 import { NotificationsService } from './notificationsService.js'
 import { PostsService } from './postsService.js'
 import { StoriesService } from './storiesService.js'
+import { ChannelsService } from './channelsService.js'
 
 export const postsService = new PostsService()
+export const channelsService = new ChannelsService()
 export const authService = new AuthService()
 export const blocksService = new BlocksService()
 export const bookmarksService = new BookmarksService()

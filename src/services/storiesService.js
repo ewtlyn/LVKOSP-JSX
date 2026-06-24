@@ -16,23 +16,80 @@ async function compressImage(file, maxSide = 1080, quality = 0.85) {
           height = maxSide;
         }
       }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;от
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(file); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);
+      } catch { resolve(file); }
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(file);
-    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
     img.src = url;
+  });
+}
+
+export async function composeStory(imageFile, textLayers, stickers) {
+  return new Promise(async (resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(imageFile);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const W = 1080, H = 1920;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(imageFile); return; }
+
+      // draw image cover-fit
+      const imgAspect = img.width / img.height;
+      const canvasAspect = W / H;
+      let sx = 0, sy = 0, sw = img.width, sh = img.height;
+      if (imgAspect > canvasAspect) {
+        sw = img.height * canvasAspect;
+        sx = (img.width - sw) / 2;
+      } else {
+        sh = img.width / canvasAspect;
+        sy = (img.height - sh) / 2;
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+
+      // draw text layers (coords in %)
+      for (const t of textLayers) {
+        const fontSize = (t.size || 28) * (W / 390);
+        ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.shadowColor = "rgba(0,0,0,0.6)";
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = t.color || "white";
+        const lines = t.text.split("\n");
+        lines.forEach((line, i) => {
+          ctx.fillText(line, (t.xPct / 100) * W, (t.yPct / 100) * H + i * fontSize * 1.3);
+        });
+        ctx.shadowBlur = 0;
+      }
+
+      // draw stickers
+      for (const s of stickers) {
+        ctx.font = `${(s.size || 48) * (W / 390)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(s.emoji, (s.xPct / 100) * W, (s.yPct / 100) * H);
+      }
+
+      canvas.toBlob((blob) => resolve(blob || imageFile), "image/jpeg", 0.88);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(imageFile); };
+    img.src = objectUrl;
   });
 }
 
 export class StoriesService {
   async upload(file, userId) {
-    if (!file || !file.type.startsWith("image/"))
+    const mimeType = (file?.type || "").toLowerCase();
+    if (!file || (!mimeType.startsWith("image/") && !mimeType.includes("heic") && !mimeType.includes("heif") && mimeType !== ""))
       throw new Error("Not an image");
     const compressed = await compressImage(file, 1080, 0.85);
     const path = `stories/${userId}/${Date.now()}.jpg`;
@@ -40,8 +97,7 @@ export class StoriesService {
       .from("post-media")
       .upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
     if (error) throw error;
-    return supabase.storage.from("post-media").getPublicUrl(path).data
-      .publicUrl;
+    return supabase.storage.from("post-media").getPublicUrl(path).data.publicUrl;
   }
 
   async create(userId, file) {
@@ -58,12 +114,11 @@ export class StoriesService {
 
   async getActive(userIds) {
     if (!userIds?.length) return [];
-    const cutoff = new Date().toISOString();
     const { data } = await supabase
       .from("stories")
       .select(`*, user:profiles(id, username, name, avatar_url)`)
       .in("user_id", userIds)
-      .gt("expires_at", cutoff)
+      .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
     return data || [];
   }
@@ -86,10 +141,7 @@ export class StoriesService {
     try {
       await supabase
         .from("story_views")
-        .upsert(
-          { story_id: storyId, viewer_id: viewerId },
-          { onConflict: "story_id,viewer_id", ignoreDuplicates: true },
-        );
+        .upsert({ story_id: storyId, viewer_id: viewerId }, { onConflict: "story_id,viewer_id", ignoreDuplicates: true });
     } catch {}
   }
 
@@ -97,15 +149,11 @@ export class StoriesService {
     try {
       const { data } = await supabase
         .from("story_views")
-        .select(
-          "viewer_id, viewed_at, viewer:profiles(id, name, username, avatar_url)",
-        )
+        .select("viewer_id, viewed_at, viewer:profiles(id, name, username, avatar_url)")
         .eq("story_id", storyId)
         .order("viewed_at", { ascending: false });
       return data || [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   }
 
   async getViewCount(storyId) {
@@ -115,8 +163,6 @@ export class StoriesService {
         .select("*", { count: "exact", head: true })
         .eq("story_id", storyId);
       return count || 0;
-    } catch {
-      return 0;
-    }
+    } catch { return 0; }
   }
 }

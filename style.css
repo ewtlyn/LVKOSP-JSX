@@ -647,8 +647,6 @@ body {
 .msgRow {
   display: flex;
   margin-bottom: 8px;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 56px;
 }
 
 .msgRow.me {
@@ -1774,4 +1772,131 @@ button, .tab, .dmItem, .friend-item, .iconBtn, .clipBtn {
     left: calc(6px + env(safe-area-inset-left, 0px));
     padding: 7px;
   }
+}
+
+/* ================================================================
+   АНИМАЦИИ И ДИЗАЙН (#7 + #14)
+   ================================================================ */
+
+/* Появление пузырей сообщений */
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.msgRow {
+  animation: msgIn 0.18s ease-out both;
+}
+
+/* Анимация лайка */
+@keyframes heartPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.45); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+.heart-pop {
+  animation: heartPop 0.35s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* Плавное появление вкладок */
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.view.is-active {
+  animation: viewFadeIn 0.2s ease-out both;
+}
+
+/* Активная вкладка в сайдбаре — акцентная полоска слева */
+.tab.is-active {
+  background: rgba(255,255,255,0.07);
+  color: white;
+  box-shadow: inset 3px 0 0 rgba(255,255,255,0.6);
+}
+.tab {
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+/* Кнопки — лёгкое нажатие */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform 0.08s;
+}
+.btn {
+  transition: background 0.15s, transform 0.08s, opacity 0.15s;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* dmItem — плавное выделение с подсветкой */
+.dmItem {
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.dmItem.is-active {
+  background: rgba(255,255,255,0.06);
+  box-shadow: inset 3px 0 0 rgba(255,255,255,0.5);
+  border-radius: 12px;
+}
+
+/* Пузыри сообщений — чуть более тёплый фон */
+.msgRow.me .msgBubble {
+  background: rgba(60, 55, 75, 0.95);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.msgRow.them .msgBubble {
+  background: rgba(40, 40, 50, 0.95);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+/* PostCard — лёгкая тень и hover-эффект на десктопе */
+.postCard {
+  transition: box-shadow 0.2s;
+}
+@media (hover: hover) {
+  .postCard:hover {
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+  }
+}
+
+/* iconBtn — плавный hover */
+.iconBtn {
+  transition: color 0.15s, background 0.15s, transform 0.08s;
+}
+.iconBtn:hover {
+  color: white;
+  background: rgba(255,255,255,0.07);
+}
+.iconBtn:active {
+  transform: scale(0.92);
+}
+
+/* Бейдж уведомлений — пульсация */
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.12); }
+}
+.notification-badge {
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+/* Форма input / textarea — focus-анимация */
+input:focus, textarea:focus {
+  border-color: rgba(255,255,255,0.3) !important;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.06);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+/* Скругление карточек профиля */
+.search-result-item {
+  border-radius: 14px !important;
+  transition: background 0.15s;
+}
+.search-result-item:hover {
+  background: rgba(255,255,255,0.05) !important;
+}
+
+/* Smooth scroll во всех контейнерах */
+.view-content, .chatBody, .dmList {
+  scroll-behavior: smooth;
 }

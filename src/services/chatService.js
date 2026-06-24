@@ -8,37 +8,38 @@ export class ChatService {
 
   async getChats(userId) {
     try {
+      // Query 1: memberships + chat data + archived in one shot
       const { data: chatMemberships, error } = await supabase
         .from("chat_members")
         .select(
-          `chat_id, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar, group_description )`,
+          `chat_id, archived, chats ( id, created_at, updated_at, last_message_content, last_message_at, is_group, group_name, group_avatar, group_description )`,
         )
         .eq("user_id", userId);
 
       if (error || !chatMemberships?.length) return [];
 
-      let archivedMap = {};
-      try {
-        const { data: archData } = await supabase
-          .from("chat_members")
-          .select("chat_id, archived")
-          .eq("user_id", userId);
-        if (archData)
-          archData.forEach((r) => {
-            archivedMap[r.chat_id] = r.archived || false;
-          });
-      } catch {}
+      const chatIds = chatMemberships.map((m) => m.chat_id).filter(Boolean);
+
+      // Query 2: ALL members for ALL chats at once (replaces N per-chat queries)
+      const { data: allMembers } = await supabase
+        .from("chat_members")
+        .select(
+          `chat_id, user_id, profiles ( id, username, name, avatar_url, status, last_seen )`,
+        )
+        .in("chat_id", chatIds)
+        .neq("user_id", userId);
+
+      const membersByChatId = {};
+      for (const m of allMembers || []) {
+        if (!membersByChatId[m.chat_id]) membersByChatId[m.chat_id] = [];
+        membersByChatId[m.chat_id].push(m);
+      }
 
       const chats = [];
       for (const membership of chatMemberships) {
         const chat = membership.chats;
-        const { data: otherMembers } = await supabase
-          .from("chat_members")
-          .select(
-            `user_id, profiles ( id, username, name, avatar_url, status, last_seen )`,
-          )
-          .eq("chat_id", chat.id)
-          .neq("user_id", userId);
+        if (!chat) continue;
+        const otherMembers = membersByChatId[chat.id] || [];
 
         if (chat.is_group) {
           chats.push({
@@ -52,25 +53,22 @@ export class ChatService {
             status: null,
             last_seen: null,
             unreadCount: 0,
-            archived: archivedMap[chat.id] || false,
+            archived: membership.archived || false,
             isGroup: true,
-            memberCount: otherMembers?.length ? otherMembers.length + 1 : 1,
+            memberCount: otherMembers.length + 1,
             description: chat.group_description || '',
           });
           continue;
         }
 
-        const otherMember = otherMembers?.[0]?.profiles;
+        const otherMember = otherMembers[0]?.profiles;
         if (!otherMember) continue;
 
         let status = "offline";
-        if (otherMember.status === "online") {
-          if (
-            Date.now() - new Date(otherMember.last_seen).getTime() <
-            5 * 60 * 1000
-          )
-            status = "online";
-        }
+        if (
+          otherMember.status === "online" &&
+          Date.now() - new Date(otherMember.last_seen).getTime() < 5 * 60 * 1000
+        ) status = "online";
 
         chats.push({
           id: chat.id,
@@ -83,10 +81,11 @@ export class ChatService {
           status,
           last_seen: otherMember.last_seen || null,
           unreadCount: 0,
-          archived: archivedMap[chat.id] || false,
+          archived: membership.archived || false,
           isGroup: false,
         });
       }
+
       const seen = new Map();
       for (const chat of chats) {
         const key = chat.isGroup ? `group:${chat.id}` : `dm:${chat.userId}`;

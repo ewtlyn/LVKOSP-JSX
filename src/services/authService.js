@@ -462,7 +462,11 @@ export class AuthService {
           }),
         uploadTimeout,
       ]);
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        if (uploadError.message?.includes('Bucket not found') || uploadError.statusCode === 404 || uploadError.status === 404)
+          throw new Error('Бакет "avatars" не найден в Supabase Storage. Создайте его в Dashboard → Storage и сделайте публичным.');
+        throw uploadError;
+      }
       const { data: pub } = supabase.storage
         .from("avatars")
         .getPublicUrl(filePath);

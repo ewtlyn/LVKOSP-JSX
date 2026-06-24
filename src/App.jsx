@@ -2863,6 +2863,7 @@ export default function App() {
   // аутф
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState(null);
+  const [serverOnline, setServerOnline] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState("login");
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
@@ -3037,6 +3038,12 @@ export default function App() {
   }, [messages, msgSearchQuery]);
 
   // инит
+  useEffect(() => {
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1)
+      .then(({ error }) => { setServerOnline(!error); })
+      .catch(() => setServerOnline(false));
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -3600,6 +3607,17 @@ export default function App() {
     <>
       <ConfirmDialog />
       <ImageLightbox />
+      {!serverOnline && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#dc2626', color: 'white', textAlign: 'center', fontSize: 13, padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <span>⚠️</span>
+          <span>Сервер недоступен — функции могут не работать. Проверьте соединение.</span>
+          <button onClick={() => {
+            supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1)
+              .then(({ error }) => { setServerOnline(!error); })
+              .catch(() => {});
+          }} style={{ marginLeft: 8, background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 4, color: 'white', padding: '2px 8px', cursor: 'pointer', fontSize: 12 }}>Повторить</button>
+        </div>
+      )}
       <div
         id="notificationContainer"
         style={{

@@ -5,7 +5,7 @@ export class PostsService {
     const { data, error } = await supabase
       .from("posts")
       .select(
-        `id, author_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url), post_comments(count)`,
+        `id, author_id, repost_of_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url), post_comments(count)`,
       )
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -23,7 +23,7 @@ export class PostsService {
     const { data, error } = await supabase
       .from("posts")
       .select(
-        `id, author_id, wall_owner_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`,
+        `id, author_id, wall_owner_id, repost_of_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`,
       )
       .or(`author_id.eq.${userId},wall_owner_id.eq.${userId}`)
       .order("created_at", { ascending: false });
@@ -281,7 +281,7 @@ export class PostsService {
 
   async getPostsByUserPaged(userId, limit = 15, offset = 0) {
     const { data, error } = await supabase.from('posts')
-      .select(`id, author_id, wall_owner_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url), post_comments(count)`)
+      .select(`id, author_id, wall_owner_id, repost_of_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url), post_comments(count)`)
       .or(`author_id.eq.${userId},wall_owner_id.eq.${userId}`)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
@@ -321,7 +321,7 @@ export class PostsService {
     const { data } = await supabase
       .from("posts")
       .select(
-        `id, author_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`,
+        `id, author_id, repost_of_id, content, media_url, created_at, author:profiles!posts_author_id_fkey(id, username, name, avatar_url)`,
       )
       .ilike("content", `%${query.trim()}%`)
       .order("created_at", { ascending: false })

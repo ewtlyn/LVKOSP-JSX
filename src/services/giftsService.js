@@ -42,18 +42,20 @@ export class GiftsService {
   }
 
   async getActiveGift(userId) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('active_gift_id')
-      .eq('id', userId)
-      .maybeSingle();
-    if (!profile?.active_gift_id) return null;
-    const { data } = await supabase
-      .from('gifts')
-      .select('id, message, gift_type:gift_types(id, name, image_url), sender:profiles!gifts_sender_id_fkey(id, name, username, avatar_url)')
-      .eq('id', profile.active_gift_id)
-      .maybeSingle();
-    return data || null;
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('active_gift_id')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!profile?.active_gift_id) return null;
+      const { data } = await supabase
+        .from('gifts')
+        .select('id, message, gift_type:gift_types(id, name, image_url), sender:profiles!gifts_sender_id_fkey(id, name, username, avatar_url)')
+        .eq('id', profile.active_gift_id)
+        .maybeSingle();
+      return data || null;
+    } catch { return null; }
   }
 
   async removeActiveGift(userId) {
@@ -63,13 +65,15 @@ export class GiftsService {
   }
 
   async getReceived(userId, limit = 50) {
-    const { data } = await supabase
-      .from('gifts')
-      .select('id, message, created_at, gift_type:gift_types(id, name, image_url, category), sender:profiles!gifts_sender_id_fkey(id, name, username, avatar_url)')
-      .eq('receiver_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    return data || [];
+    try {
+      const { data } = await supabase
+        .from('gifts')
+        .select('id, message, created_at, gift_type:gift_types(id, name, image_url, category), sender:profiles!gifts_sender_id_fkey(id, name, username, avatar_url)')
+        .eq('receiver_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      return data || [];
+    } catch { return []; }
   }
 
   async getCount(userId) {

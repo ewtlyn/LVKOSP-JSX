@@ -1358,7 +1358,10 @@ function GiftsSection({ userId, onUserClick }) {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    giftsService.getReceived(userId).then(g => { setGifts(g); setLoading(false); });
+    if (!userId) { setLoading(false); return; }
+    giftsService.getReceived(userId)
+      .then(g => { setGifts(g); setLoading(false); })
+      .catch(() => setLoading(false));
   }, [userId]);
 
   if (loading || gifts.length === 0) return null;
@@ -1452,7 +1455,7 @@ function ProfileWall({
 
   useEffect(() => {
     if (!profileUser?.id) return;
-    giftsService.getActiveGift(profileUser.id).then(setActiveGift);
+    giftsService.getActiveGift(profileUser.id).then(setActiveGift).catch(() => {});
   }, [profileUser?.id]);
 
   useEffect(() => {
@@ -1863,7 +1866,7 @@ function ProfileWall({
         />
       )}
 
-      <GiftsSection userId={profileUser.id} currentUser={currentUser} onUserClick={onUserClick} />
+      <GiftsSection userId={profileUser?.id} onUserClick={onUserClick} />
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
         {[['posts', 'Посты'], ...(isMe ? [['bookmarks', 'Закладки']] : [])].map(([key, label]) => (

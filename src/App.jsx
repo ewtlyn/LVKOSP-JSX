@@ -1260,7 +1260,7 @@ function GiftManageModal({ onClose }) {
 }
 
 // ─── GiftPickerModal ──────────────────────────────────────────────────────────
-function GiftPickerModal({ sender, receiver, onClose }) {
+function GiftPickerModal({ sender, receiver, onClose, onGiftSent }) {
   const [types, setTypes] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeTab, setActiveTab] = useState('all');
@@ -1281,7 +1281,11 @@ function GiftPickerModal({ sender, receiver, onClose }) {
     if (!selected || sending) return;
     setSending(true);
     const res = await giftsService.send(sender.id, receiver.id, selected.id, message);
-    if (res.success) { setSent(true); }
+    if (res.success) {
+      setSent(true);
+      // fetch fresh gift data so profile updates immediately
+      giftsService.getActiveGift(receiver.id).then(g => { if (g) onGiftSent?.(g); }).catch(() => {});
+    }
     else { notificationService.showNotification('Ошибка', res.error, 'error'); setSending(false); }
   }
 
@@ -1352,10 +1356,33 @@ function GiftPickerModal({ sender, receiver, onClose }) {
 }
 
 // ─── GiftsSection ─────────────────────────────────────────────────────────────
+function GiftCard({ g, onUserClick, size = 'sm' }) {
+  const big = size === 'lg';
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: big ? 16 : 12, overflow: 'hidden', position: 'relative', aspectRatio: '1' }}>
+      {g.gift_type?.image_url
+        ? <img src={g.gift_type.image_url} alt={g.gift_type.name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+        : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: big ? 52 : 36 }}>🎁</div>}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(0,0,0,0.8))', padding: big ? '24px 8px 8px' : '18px 6px 5px' }}>
+        {g.gift_type?.name && <div style={{ fontSize: big ? 11 : 8, color: 'rgba(255,255,255,0.7)', fontWeight: 700, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.gift_type.name}</div>}
+        {g.sender && (
+          <button onClick={() => onUserClick?.(g.sender)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: '100%' }}>
+            <div style={{ width: big ? 18 : 14, height: big ? 18 : 14, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.2)' }}>
+              {g.sender.avatar_url ? <img src={g.sender.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+            </div>
+            <span style={{ fontSize: big ? 11 : 9, color: 'rgba(255,255,255,0.85)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.sender.name?.split(' ')[0]}</span>
+          </button>
+        )}
+        {g.message && <div style={{ fontSize: big ? 10 : 8, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', marginTop: 2, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>«{g.message}»</div>}
+      </div>
+    </div>
+  );
+}
+
 function GiftsSection({ userId, onUserClick }) {
   const [gifts, setGifts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
@@ -1366,36 +1393,42 @@ function GiftsSection({ userId, onUserClick }) {
 
   if (loading || gifts.length === 0) return null;
 
-  const shown = expanded ? gifts : gifts.slice(0, 9);
+  const preview = gifts.slice(0, 6);
+
   return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.07)', padding: 16, marginBottom: 12 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: 'rgba(255,255,255,0.7)' }}>🎁 Подарки · {gifts.length}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        {shown.map(g => (
-          <div key={g.id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, overflow: 'hidden', position: 'relative', aspectRatio: '1' }}>
-            {g.gift_type?.image_url
-              ? <img src={g.gift_type.image_url} alt={g.gift_type.name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36 }}>🎁</div>}
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(0,0,0,0.75))', padding: '18px 6px 5px' }}>
-              {g.sender && (
-                <button onClick={() => onUserClick?.(g.sender)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: '100%' }}>
-                  <div style={{ width: 14, height: 14, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.2)' }}>
-                    {g.sender.avatar_url ? <img src={g.sender.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
-                  </div>
-                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.sender.name?.split(' ')[0]}</span>
-                </button>
-              )}
-              {g.message && <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', marginTop: 2, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>«{g.message}»</div>}
+    <>
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.07)', padding: 16, marginBottom: 12 }}>
+        <button onClick={() => setModalOpen(true)}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 12 }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>🎁 Подарки · {gifts.length}</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Все →</span>
+        </button>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {preview.map(g => <GiftCard key={g.id} g={g} onUserClick={onUserClick} />)}
+        </div>
+        {gifts.length > 6 && (
+          <button onClick={() => setModalOpen(true)} style={{ marginTop: 10, background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 12, cursor: 'pointer', width: '100%', textAlign: 'center', padding: 4 }}>
+            Ещё {gifts.length - 6} подарков
+          </button>
+        )}
+      </div>
+
+      {modalOpen && (
+        <div onClick={() => setModalOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '20px 20px 0 0', padding: 20, width: '100%', maxWidth: 480, maxHeight: '85vh', display: 'flex', flexDirection: 'column', paddingBottom: 'calc(20px + env(safe-area-inset-bottom,0px))' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>🎁 Все подарки · {gifts.length}</div>
+              <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                {gifts.map(g => <GiftCard key={g.id} g={g} onUserClick={onUserClick} size="lg" />)}
+              </div>
             </div>
           </div>
-        ))}
-      </div>
-      {gifts.length > 9 && (
-        <button onClick={() => setExpanded(v => !v)} style={{ marginTop: 10, background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 12, cursor: 'pointer', width: '100%', textAlign: 'center', padding: 4 }}>
-          {expanded ? 'Свернуть' : `Показать ещё ${gifts.length - 9}`}
-        </button>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -1411,6 +1444,8 @@ function ProfileWall({
   onNotify,
   onMentionClick,
   onUserUpdate,
+  onGiftClick,
+  lastSentGift,
 }) {
   const [posts, setPosts] = useState([]);
   const [bookmarks, setBookmarks] = useState([]);
@@ -1457,6 +1492,12 @@ function ProfileWall({
     if (!profileUser?.id) return;
     giftsService.getActiveGift(profileUser.id).then(setActiveGift).catch(() => {});
   }, [profileUser?.id]);
+
+  useEffect(() => {
+    if (lastSentGift?.receiverId === profileUser?.id && lastSentGift?.gift) {
+      setActiveGift(lastSentGift.gift);
+    }
+  }, [lastSentGift]);
 
   useEffect(() => {
     if (!profileUser?.id || !currentUser?.id) return;
@@ -1684,8 +1725,7 @@ function ProfileWall({
               alignItems: "flex-end",
             }}
           >
-            <div style={{ marginTop: -20, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-              <div style={{ position: "relative", width: 64, flexShrink: 0 }}>
+            <div style={{ marginTop: -20, position: 'relative', display: 'inline-block' }}>
               {isMe && (
                 <input
                   type="file"
@@ -1697,11 +1737,7 @@ function ProfileWall({
               )}
               <label
                 htmlFor={isMe ? "avatarFileInput" : undefined}
-                style={{
-                  cursor: isMe ? "pointer" : undefined,
-                  position: "relative",
-                  display: "inline-block",
-                }}
+                style={{ cursor: isMe ? "pointer" : undefined, position: "relative", display: "inline-block" }}
               >
                 <Avatar
                   url={localAvatarUrl}
@@ -1710,56 +1746,35 @@ function ProfileWall({
                   style={{ border: "3px solid #0b0b0b" }}
                 />
                 {isMe && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: 0,
-                      right: 0,
-                      width: 20,
-                      height: 20,
-                      borderRadius: "50%",
-                      background: "rgba(0,0,0,0.7)",
-                      border: "1.5px solid rgba(255,255,255,0.3)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 10,
-                    }}
-                  >
+                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 20, height: 20, borderRadius: "50%", background: "rgba(0,0,0,0.7)", border: "1.5px solid rgba(255,255,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>
                     {avatarUploading ? "…" : "✎"}
                   </div>
                 )}
               </label>
-              </div>
               {activeGift && (
-                <GiftBadge
-                  gift={activeGift}
-                  isOwn={isMe}
-                  onRemove={async () => { await giftsService.removeActiveGift(profileUser.id); setActiveGift(null); }}
-                  onUserClick={onUserClick}
-                />
+                <div style={{ position: 'absolute', bottom: -8, left: 44, zIndex: 10 }}>
+                  <GiftBadge
+                    gift={activeGift}
+                    isOwn={isMe}
+                    onRemove={async () => { await giftsService.removeActiveGift(profileUser.id); setActiveGift(null); }}
+                    onUserClick={onUserClick}
+                  />
+                </div>
               )}
             </div>
-            {!isMe && currentUser?.id && following !== null && (
-              <button
-                onClick={handleFollow}
-                disabled={followLoading}
-                style={{
-                  background: following
-                    ? "transparent"
-                    : "rgba(255,255,255,0.13)",
-                  border: `1px solid ${following ? "rgba(255,255,255,0.2)" : "transparent"}`,
-                  color: "white",
-                  borderRadius: 10,
-                  padding: "7px 18px",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 13,
-                  marginBottom: 4,
-                }}
-              >
-                {following ? "Отписаться" : "Подписаться"}
-              </button>
+            {!isMe && currentUser?.id && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                {following !== null && (
+                  <button onClick={handleFollow} disabled={followLoading}
+                    style={{ background: following ? "transparent" : "rgba(255,255,255,0.13)", border: `1px solid ${following ? "rgba(255,255,255,0.2)" : "transparent"}`, color: "white", borderRadius: 10, padding: "7px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+                    {following ? "Отписаться" : "Подписаться"}
+                  </button>
+                )}
+                <button onClick={() => onGiftClick?.(profileUser)}
+                  style={{ background: 'rgba(249,202,36,0.12)', border: '1px solid rgba(249,202,36,0.3)', color: '#f9ca24', borderRadius: 10, padding: "7px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+                  🎁 Подарить
+                </button>
+              </div>
             )}
           </div>
           <div style={{ marginTop: 10 }}>
@@ -4093,6 +4108,7 @@ export default function App() {
   const [viewingUser, setViewingUser] = useState(null);
   const [giftTarget, setGiftTarget] = useState(null);
   const [giftManageOpen, setGiftManageOpen] = useState(false);
+  const [lastSentGift, setLastSentGift] = useState(null);
 
   // share
   const [sharePost, setSharePost] = useState(null);
@@ -4784,6 +4800,7 @@ export default function App() {
           sender={user}
           receiver={giftTarget}
           onClose={() => setGiftTarget(null)}
+          onGiftSent={(g) => setLastSentGift({ receiverId: giftTarget.id, gift: g })}
         />
       )}
 
@@ -5933,13 +5950,6 @@ export default function App() {
                 </button>
                 <button
                   className="btn is-outline"
-                  style={{ color: '#f9ca24', borderColor: 'rgba(249,202,36,0.3)' }}
-                  onClick={() => setGiftTarget(viewingUser)}
-                >
-                  🎁 Подарить
-                </button>
-                <button
-                  className="btn is-outline"
                   style={{
                     color: "rgba(255,100,100,0.8)",
                     borderColor: "rgba(255,100,100,0.3)",
@@ -6005,6 +6015,8 @@ export default function App() {
                     preview,
                   )
                 }
+                lastSentGift={lastSentGift}
+                onGiftClick={(u) => setGiftTarget(u)}
               />
             </div>
           </section>

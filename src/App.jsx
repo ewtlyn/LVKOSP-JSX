@@ -1038,7 +1038,7 @@ function CreatePost({
                 </div>
               ))}
               {previews.length < 4 && (
-                <label htmlFor="postFileInput" style={{ width: 100, height: 100, border: '1.5px dashed rgba(255,255,255,0.2)', borderRadius: 10, background: 'transparent', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</label>
+                <button type="button" onClick={() => fileRef.current?.click()} style={{ width: 100, height: 100, border: '1.5px dashed rgba(255,255,255,0.2)', borderRadius: 10, background: 'transparent', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
               )}
             </div>
           )}
@@ -1050,8 +1050,9 @@ function CreatePost({
               marginTop: 8,
             }}
           >
-            <label
-              htmlFor="postFileInput"
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
               style={{
                 background: "transparent",
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -1071,9 +1072,9 @@ function CreatePost({
                 <polyline points="21 15 16 10 5 21" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
               </svg>
               Фото
-            </label>
+            </button>
             <input
-              id="postFileInput"
+              ref={fileRef}
               type="file"
               accept="image/*"
               multiple

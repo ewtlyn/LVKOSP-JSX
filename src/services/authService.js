@@ -325,7 +325,7 @@ export class AuthService {
             supabase
               .from("profiles")
               .select(
-                "id, username, name, avatar_url, banner_url, bio, status, last_seen",
+                "id, username, name, avatar_url, banner_url, bio, status, last_seen, is_admin",
               )
               .eq("id", userId)
               .maybeSingle()
@@ -356,7 +356,7 @@ export class AuthService {
         supabase
           .from("profiles")
           .select(
-            "id, username, name, avatar_url, banner_url, bio, status, last_seen",
+            "id, username, name, avatar_url, banner_url, bio, status, last_seen, is_admin",
           )
           .eq("id", userId)
           .maybeSingle(),

@@ -18,6 +18,7 @@ import {
   notificationsService,
   postsService,
   storiesService,
+  giftsService,
 } from "./services";
 import { pushService } from "./services/pushService";
 import { composeStory } from "./services/storiesService";
@@ -1108,6 +1109,293 @@ function CreatePost({
   );
 }
 
+// ─── GiftBadge ────────────────────────────────────────────────────────────────
+function GiftBadge({ gift, isOwn, onRemove, onUserClick }) {
+  const [hover, setHover] = useState(false);
+  if (!gift?.gift_type?.image_url) return null;
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}>
+      <img
+        src={gift.gift_type.image_url}
+        alt={gift.gift_type.name}
+        style={{ width: 52, height: 52, objectFit: 'contain', display: 'block', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))' }}
+      />
+      {/* Tooltip */}
+      {hover && (
+        <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,15,25,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 12px', minWidth: 160, maxWidth: 220, zIndex: 200, pointerEvents: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: gift.message ? 6 : 0 }}>
+            {gift.sender?.avatar_url && (
+              <img src={gift.sender.avatar_url} alt="" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+            )}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'white' }}>{gift.sender?.name}</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>подарил{gift.gift_type.name ? ` «${gift.gift_type.name}»` : ''}</div>
+            </div>
+          </div>
+          {gift.message && (
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontStyle: 'italic', lineHeight: 1.4, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 6 }}>«{gift.message}»</div>
+          )}
+          {/* Arrow */}
+          <div style={{ position: 'absolute', bottom: -5, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: 'rgba(15,15,25,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
+        </div>
+      )}
+      {/* Remove button — only own profile */}
+      {isOwn && (
+        <button onClick={onRemove}
+          style={{ position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: '50%', background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.7)', fontSize: 9, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── GiftManageModal ──────────────────────────────────────────────────────────
+function GiftManageModal({ onClose }) {
+  const [types, setTypes] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [activeTab, setActiveTab] = useState('all');
+  const [uploading, setUploading] = useState(false);
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('');
+  const [newCat, setNewCat] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [file, setFile] = useState(null);
+  const fileRef = useRef(null);
+
+  const load = async () => {
+    const [t, c] = await Promise.all([giftsService.getTypes(), giftsService.getCategories()]);
+    setTypes(t); setCategories(c);
+  };
+  useEffect(() => { load(); }, []);
+
+  const shown = activeTab === 'all' ? types : types.filter(t => t.category === activeTab);
+
+  function pickFile(e) {
+    const f = e.target.files?.[0]; if (!f) return;
+    e.target.value = '';
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  }
+
+  async function handleUpload() {
+    if (!file || !name.trim()) return;
+    const cat = newCat.trim() || category || 'Разное';
+    setUploading(true);
+    const res = await giftsService.uploadGiftType(file, name, cat);
+    setUploading(false);
+    if (!res.success) { notificationService.showNotification('Ошибка', res.error, 'error'); return; }
+    setFile(null); setPreview(null); setName(''); setNewCat('');
+    load();
+  }
+
+  async function handleDelete(id) {
+    await giftsService.deleteGiftType(id);
+    load();
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '20px 20px 0 0', padding: 20, width: '100%', maxWidth: 480, maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 'calc(20px + env(safe-area-inset-bottom,0px))' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Управление подарками</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {/* Upload form */}
+        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 2 }}>Добавить подарок</div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <div onClick={() => fileRef.current?.click()} style={{ width: 72, height: 72, borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '2px dashed rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, overflow: 'hidden' }}>
+              {preview ? <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span style={{ fontSize: 24 }}>🖼</span>}
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Название (напр. «Офигенной красотке»)" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 12px', color: 'white', fontSize: 13, outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={category} onChange={e => setCategory(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 10px', color: 'white', fontSize: 13 }}>
+                  <option value="">Существующая категория</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Новая категория" style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 10px', color: 'white', fontSize: 13, outline: 'none' }} />
+              </div>
+            </div>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
+          <button onClick={handleUpload} disabled={!file || !name.trim() || uploading}
+            style={{ background: file && name.trim() ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'rgba(255,255,255,0.08)', border: 'none', color: 'white', borderRadius: 10, padding: '9px', fontWeight: 700, fontSize: 13, cursor: file && name.trim() ? 'pointer' : 'default', opacity: uploading ? 0.6 : 1 }}>
+            {uploading ? 'Загружаю...' : 'Добавить подарок'}
+          </button>
+        </div>
+
+        {/* Category tabs */}
+        {categories.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+            {['all', ...categories].map(c => (
+              <button key={c} onClick={() => setActiveTab(c)}
+                style={{ flexShrink: 0, padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: activeTab === c ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)', color: activeTab === c ? 'white' : 'rgba(255,255,255,0.4)' }}>
+                {c === 'all' ? 'Все' : c}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Grid */}
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {shown.map(t => (
+              <div key={t.id} style={{ position: 'relative', background: 'rgba(255,255,255,0.04)', borderRadius: 12, overflow: 'hidden', aspectRatio: '1' }}>
+                <img src={t.image_url} alt={t.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(0,0,0,0.7))', padding: '16px 6px 6px', fontSize: 9, color: 'rgba(255,255,255,0.8)', textAlign: 'center', lineHeight: 1.2 }}>{t.name}</div>
+                <button onClick={() => handleDelete(t.id)} style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.6)', border: 'none', color: 'rgba(255,100,100,0.8)', width: 20, height: 20, borderRadius: '50%', fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              </div>
+            ))}
+          </div>
+          {shown.length === 0 && <div style={{ textAlign: 'center', padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Нет подарков</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── GiftPickerModal ──────────────────────────────────────────────────────────
+function GiftPickerModal({ sender, receiver, onClose }) {
+  const [types, setTypes] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [activeTab, setActiveTab] = useState('all');
+  const [selected, setSelected] = useState(null);
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    Promise.all([giftsService.getTypes(), giftsService.getCategories()]).then(([t, c]) => {
+      setTypes(t); setCategories(c);
+    });
+  }, []);
+
+  const shown = activeTab === 'all' ? types : types.filter(t => t.category === activeTab);
+
+  async function handleSend() {
+    if (!selected || sending) return;
+    setSending(true);
+    const res = await giftsService.send(sender.id, receiver.id, selected.id, message);
+    if (res.success) { setSent(true); }
+    else { notificationService.showNotification('Ошибка', res.error, 'error'); setSending(false); }
+  }
+
+  if (sent) return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: 20, padding: 32, textAlign: 'center', maxWidth: 320, width: '100%' }}>
+        <img src={selected.image_url} alt={selected.name} style={{ width: 120, height: 120, objectFit: 'contain', marginBottom: 12 }} />
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Подарок отправлен!</div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>«{selected.name}» улетел к {receiver.name}</div>
+        <button onClick={onClose} style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 28px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Ура!</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1050 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#1a1a2e', borderRadius: '20px 20px 0 0', padding: 20, width: '100%', maxWidth: 480, maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 'calc(20px + env(safe-area-inset-bottom,0px))' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>🎁 Подарить {receiver.name}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {/* Category tabs */}
+        {categories.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, flexShrink: 0 }}>
+            {['all', ...categories].map(c => (
+              <button key={c} onClick={() => setActiveTab(c)}
+                style={{ flexShrink: 0, padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: activeTab === c ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)', color: activeTab === c ? 'white' : 'rgba(255,255,255,0.4)' }}>
+                {c === 'all' ? 'Все' : c}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Gift grid */}
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {types.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Подарков пока нет — добавь их в настройках</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {shown.map(g => (
+                <button key={g.id} onClick={() => setSelected(g)}
+                  style={{ background: selected?.id === g.id ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)', border: selected?.id === g.id ? '2px solid rgba(255,255,255,0.5)' : '2px solid transparent', borderRadius: 14, padding: 0, cursor: 'pointer', overflow: 'hidden', aspectRatio: '1', position: 'relative', transition: 'all 0.12s', transform: selected?.id === g.id ? 'scale(1.04)' : 'scale(1)' }}>
+                  <img src={g.image_url} alt={g.name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(0,0,0,0.65))', padding: '14px 5px 5px', fontSize: 9, color: 'rgba(255,255,255,0.9)', textAlign: 'center', lineHeight: 1.2, fontWeight: 600 }}>{g.name}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Message + send */}
+        {selected && (
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
+            <input value={message} onChange={e => setMessage(e.target.value)}
+              placeholder="Открытка (необязательно)..."
+              maxLength={120}
+              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px 14px', color: 'white', fontSize: 14, outline: 'none' }} />
+            <button onClick={handleSend} disabled={sending}
+              style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: 'white', borderRadius: 12, padding: '12px', fontWeight: 800, fontSize: 14, cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.7 : 1 }}>
+              {sending ? 'Отправляю...' : 'Подарить 🎁'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── GiftsSection ─────────────────────────────────────────────────────────────
+function GiftsSection({ userId, onUserClick }) {
+  const [gifts, setGifts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    giftsService.getReceived(userId).then(g => { setGifts(g); setLoading(false); });
+  }, [userId]);
+
+  if (loading || gifts.length === 0) return null;
+
+  const shown = expanded ? gifts : gifts.slice(0, 9);
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.07)', padding: 16, marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: 'rgba(255,255,255,0.7)' }}>🎁 Подарки · {gifts.length}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {shown.map(g => (
+          <div key={g.id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, overflow: 'hidden', position: 'relative', aspectRatio: '1' }}>
+            {g.gift_type?.image_url
+              ? <img src={g.gift_type.image_url} alt={g.gift_type.name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36 }}>🎁</div>}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(0,0,0,0.75))', padding: '18px 6px 5px' }}>
+              {g.sender && (
+                <button onClick={() => onUserClick?.(g.sender)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: '100%' }}>
+                  <div style={{ width: 14, height: 14, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.2)' }}>
+                    {g.sender.avatar_url ? <img src={g.sender.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+                  </div>
+                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.sender.name?.split(' ')[0]}</span>
+                </button>
+              )}
+              {g.message && <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', marginTop: 2, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>«{g.message}»</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+      {gifts.length > 9 && (
+        <button onClick={() => setExpanded(v => !v)} style={{ marginTop: 10, background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 12, cursor: 'pointer', width: '100%', textAlign: 'center', padding: 4 }}>
+          {expanded ? 'Свернуть' : `Показать ещё ${gifts.length - 9}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── ProfileWall ──────────────────────────────────────────────────────────────
 function ProfileWall({
   profileUser,
@@ -1150,6 +1438,7 @@ function ProfileWall({
   const [editBio, setEditBio] = useState(profileUser?.bio || '');
   const [editSaving, setEditSaving] = useState(false);
   const [editMsg, setEditMsg] = useState(null);
+  const [activeGift, setActiveGift] = useState(null);
   const isMe = Boolean(currentUser?.id) && currentUser.id === profileUser?.id;
   const canPost = isMe || isFriendOfUser;
   const isPrivateLocked = !isMe && profileUser?.is_private && !isFriendOfUser;
@@ -1160,6 +1449,11 @@ function ProfileWall({
   useEffect(() => {
     setLocalAvatarUrl(profileUser?.avatar_url || "");
   }, [profileUser?.avatar_url]);
+
+  useEffect(() => {
+    if (!profileUser?.id) return;
+    giftsService.getActiveGift(profileUser.id).then(setActiveGift);
+  }, [profileUser?.id]);
 
   useEffect(() => {
     if (!profileUser?.id || !currentUser?.id) return;
@@ -1387,7 +1681,8 @@ function ProfileWall({
               alignItems: "flex-end",
             }}
           >
-            <div style={{ marginTop: -20, position: "relative", width: 64 }}>
+            <div style={{ marginTop: -20, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+              <div style={{ position: "relative", width: 64, flexShrink: 0 }}>
               {isMe && (
                 <input
                   type="file"
@@ -1432,6 +1727,15 @@ function ProfileWall({
                   </div>
                 )}
               </label>
+              </div>
+              {activeGift && (
+                <GiftBadge
+                  gift={activeGift}
+                  isOwn={isMe}
+                  onRemove={async () => { await giftsService.removeActiveGift(profileUser.id); setActiveGift(null); }}
+                  onUserClick={onUserClick}
+                />
+              )}
             </div>
             {!isMe && currentUser?.id && following !== null && (
               <button
@@ -1558,6 +1862,8 @@ function ProfileWall({
           wallOwnerName={isMe ? null : profileUser?.name}
         />
       )}
+
+      <GiftsSection userId={profileUser.id} currentUser={currentUser} onUserClick={onUserClick} />
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
         {[['posts', 'Посты'], ...(isMe ? [['bookmarks', 'Закладки']] : [])].map(([key, label]) => (
@@ -2590,9 +2896,9 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
       const { error: upErr } = await supabase.storage.from('post-media').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
       if (upErr) throw upErr;
       const { data } = supabase.storage.from('post-media').getPublicUrl(path);
-      await supabase.from('channels').update({ banner_url: data.publicUrl }).eq('id', channel.id);
+      const { error: dbErr } = await supabase.from('channels').update({ banner_url: data.publicUrl }).eq('id', channel.id);
+      if (dbErr) throw dbErr;
       setLocalBanner(data.publicUrl);
-      channel.banner_url = data.publicUrl;
       notificationService.showNotification('Фон канала обновлён', '', 'success');
     } catch (err) {
       notificationService.showNotification('Ошибка', err.message, 'error');
@@ -2637,11 +2943,16 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [p, m, cnt] = await Promise.all([
+      const [fresh, p, m, cnt] = await Promise.all([
+        channelsService.getById(channel.id),
         channelsService.getPosts(channel.id),
         currentUser?.id ? channelsService.getMembership(channel.id, currentUser.id) : null,
         channelsService.getSubscriberCount(channel.id),
       ]);
+      if (fresh) {
+        setLocalAvatar(fresh.avatar_url || '');
+        setLocalBanner(fresh.banner_url || '');
+      }
       const postIds = p.map(x => x.id);
       const liked = currentUser?.id && postIds.length ? await channelsService.getLikedPostIds(currentUser.id, postIds) : new Set();
       setPosts(p.map(x => ({ ...x, _liked: liked.has(x.id) })));
@@ -3777,6 +4088,8 @@ export default function App() {
 
   // профиль
   const [viewingUser, setViewingUser] = useState(null);
+  const [giftTarget, setGiftTarget] = useState(null);
+  const [giftManageOpen, setGiftManageOpen] = useState(false);
 
   // share
   const [sharePost, setSharePost] = useState(null);
@@ -4458,6 +4771,18 @@ export default function App() {
           onClose={() => setSharePost(null)}
           onSend={handleSharePost}
         />
+      )}
+
+      {giftTarget && user && (
+        <GiftPickerModal
+          sender={user}
+          receiver={giftTarget}
+          onClose={() => setGiftTarget(null)}
+        />
+      )}
+
+      {giftManageOpen && (
+        <GiftManageModal onClose={() => setGiftManageOpen(false)} />
       )}
 
       {focusPost && (
@@ -5602,6 +5927,13 @@ export default function App() {
                 </button>
                 <button
                   className="btn is-outline"
+                  style={{ color: '#f9ca24', borderColor: 'rgba(249,202,36,0.3)' }}
+                  onClick={() => setGiftTarget(viewingUser)}
+                >
+                  🎁 Подарить
+                </button>
+                <button
+                  className="btn is-outline"
                   style={{
                     color: "rgba(255,100,100,0.8)",
                     borderColor: "rgba(255,100,100,0.3)",
@@ -5781,6 +6113,19 @@ export default function App() {
               style={{ overflowY: "auto", padding: 20 }}
             >
               <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={doLogout} />
+              {user?.is_admin && (
+                <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>ПОДАРКИ</div>
+                  <button onClick={() => setGiftManageOpen(true)}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '12px 16px', color: 'white', fontSize: 14, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 20 }}>🎁</span>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>Управление подарками</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Загрузить картинки и настроить категории</div>
+                    </div>
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         </main>

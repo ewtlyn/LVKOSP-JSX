@@ -9,8 +9,10 @@ import { NotificationsService } from './notificationsService.js'
 import { PostsService } from './postsService.js'
 import { StoriesService } from './storiesService.js'
 import { ChannelsService } from './channelsService.js'
+import { GiftsService } from './giftsService.js'
 
 export const postsService = new PostsService()
+export const giftsService = new GiftsService()
 export const channelsService = new ChannelsService()
 export const authService = new AuthService()
 export const blocksService = new BlocksService()

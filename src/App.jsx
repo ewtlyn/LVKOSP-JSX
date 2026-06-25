@@ -4173,7 +4173,10 @@ export default function App() {
       const res = await authService.getCurrentUser();
       if (!mounted) return;
       if (res.success) {
-        setUser(res.user);
+        // fetch is_admin fresh from DB (not from cache)
+        const { data: adminRow } = await supabase
+          .from('profiles').select('is_admin').eq('id', res.user.id).maybeSingle();
+        setUser({ ...res.user, is_admin: adminRow?.is_admin || false });
         setAuthModalOpen(false);
         pushService.subscribe(res.user.id);
       } else {

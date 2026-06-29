@@ -657,8 +657,12 @@ body {
   justify-content: flex-start;
 }
 
-.msgBubble {
+.msgBubbleWrap {
   max-width: 70%;
+}
+
+.msgBubble {
+  max-width: 100%;
   padding: 9px 13px 7px;
   border-radius: 18px;
   font-size: 14.5px;
@@ -668,14 +672,14 @@ body {
 }
 
 .msgRow.me .msgBubble {
-  background: #2a2250;
+  background: var(--bubble-me, linear-gradient(135deg,#2a2250,#1e1840));
   color: white;
   border-bottom-right-radius: 4px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.35);
 }
 
 .msgRow.them .msgBubble {
-  background: rgba(50, 50, 60, 0.95);
+  background: var(--bubble-them, rgba(50,50,62,0.95));
   color: white;
   border-bottom-left-radius: 4px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.35);
@@ -692,11 +696,8 @@ body {
   color: rgba(255, 255, 255, 0.35);
   margin-top: 3px;
   text-align: right;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  line-height: 1;
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .chatComposer {
@@ -1372,7 +1373,7 @@ body {
   }
   
   .msgBubble {
-    max-width: 85%;
+    max-width: 100%;
   }
   
   .chatComposer {
@@ -1733,7 +1734,8 @@ button, .tab, .dmItem, .friend-item, .iconBtn, .clipBtn {
   .chatBody { padding: 10px; gap: 8px; }
   .chatComposer { gap: 4px; }
 
-  .msgBubble { max-width: 90%; padding: 10px 13px; font-size: 14px; }
+  .msgBubbleWrap { max-width: 88%; }
+  .msgBubble { max-width: 100%; padding: 10px 13px; font-size: 14px; }
 
   .profileName { font-size: 19px; }
   .profileAvatar { width: 60px; height: 60px; }
@@ -1770,7 +1772,8 @@ button, .tab, .dmItem, .friend-item, .iconBtn, .clipBtn {
   .chatHeader__status { display: none; }
 
   .chatBody { padding: 8px 14px; gap: 6px; }
-  .msgBubble { padding: 8px 13px; font-size: 14px; max-width: 75%; }
+  .msgBubbleWrap { max-width: 78%; }
+  .msgBubble { padding: 8px 13px; font-size: 14px; max-width: 100%; }
 
   .chatComposer {
     padding-top: 8px;

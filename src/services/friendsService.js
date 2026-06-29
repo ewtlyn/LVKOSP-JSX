@@ -82,7 +82,7 @@ export class FriendsService {
         status: "accepted",
         created_at: new Date().toISOString(),
       });
-      if (insErr) return { success: false, error: insErr.message };
+      if (insErr) return { success: false, error: insErrс.message };
       return { success: true };
     } catch (e) {
       return {

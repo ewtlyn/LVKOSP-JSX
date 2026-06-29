@@ -84,7 +84,7 @@ function LoadingScreen({ onRetry }) {
     <div style={{ background: '#0b0b0b', height: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)' }}>
       <div id="notificationContainer" />
       <div style={{ textAlign: 'center', padding: 24 }}>
-        <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: 900, fontSize: 26, color: 'white' }}>L</div>
+        <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-mid) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: 900, fontSize: 26, color: 'white' }}>L</div>
         <div style={{ fontSize: 15, marginBottom: 6 }}>Загрузка...</div>
         {showSlow && (
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginBottom: 16, maxWidth: 240, lineHeight: 1.5 }}>
@@ -92,7 +92,7 @@ function LoadingScreen({ onRetry }) {
           </div>
         )}
         {seconds >= 20 && (
-          <button onClick={onRetry} style={{ marginTop: 8, padding: '10px 24px', background: '#7c3aed', border: 'none', borderRadius: 12, color: 'white', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}>
+          <button onClick={onRetry} style={{ marginTop: 8, padding: '10px 24px', background: 'var(--accent-dark)', border: 'none', borderRadius: 12, color: 'white', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}>
             Повторить
           </button>
         )}
@@ -159,8 +159,8 @@ function formatDateLabel(ts) {
 }
 
 const COLORS = [
-  "#6366f1",
-  "#8b5cf6",
+  "var(--accent-indigo)",
+  "var(--accent-mid)",
   "#ec4899",
   "#f43f5e",
   "#f97316",
@@ -176,7 +176,7 @@ function renderText(text, onMentionClick) {
     if (part.match(/^@\w+$/)) {
       const username = part.slice(1)
       return (
-        <span key={i} style={{ color: '#a78bfa', cursor: 'pointer', fontWeight: 600 }}
+        <span key={i} style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}
           onClick={() => onMentionClick?.(username)}>
           {part}
         </span>
@@ -642,7 +642,7 @@ function PostCard({
           <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={3}
             style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', padding: '8px 10px', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleSaveEdit} disabled={editSaving} style={{ padding: '6px 14px', borderRadius: 8, background: '#7c3aed', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13 }}>{editSaving ? '...' : 'Сохранить'}</button>
+            <button onClick={handleSaveEdit} disabled={editSaving} style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--accent-dark)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13 }}>{editSaving ? '...' : 'Сохранить'}</button>
             <button onClick={() => setEditing(false)} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
           </div>
         </div>
@@ -763,7 +763,7 @@ function PostCard({
                 gap: 6,
                 background: "transparent",
                 border: "none",
-                color: repostDone ? "#a78bfa" : "rgba(255,255,255,0.5)",
+                color: repostDone ? "var(--accent)" : "rgba(255,255,255,0.5)",
                 cursor: repostLoading ? 'not-allowed' : 'pointer',
                 opacity: repostLoading ? 0.5 : 1,
                 padding: "6px 10px",
@@ -930,7 +930,7 @@ function CommentItem({ comment: c, currentUser, onDeleted, onEdited, onUserClick
           <div style={{ display: 'flex', gap: 6 }}>
             <input value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()}
               style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, padding: '4px 8px', color: 'white', fontSize: 13 }} />
-            <button onClick={handleSave} disabled={saving} style={{ background: '#7c3aed', border: 'none', borderRadius: 7, color: 'white', padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>{saving ? '...' : '✓'}</button>
+            <button onClick={handleSave} disabled={saving} style={{ background: 'var(--accent-dark)', border: 'none', borderRadius: 7, color: 'white', padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>{saving ? '...' : '✓'}</button>
             <button onClick={() => setEditMode(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 7, color: 'white', padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✕</button>
           </div>
         ) : <div style={{ fontSize: 13 }}>{c.content}</div>}
@@ -1225,7 +1225,7 @@ function GiftManageModal({ onClose }) {
           </div>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
           <button onClick={handleUpload} disabled={!file || !name.trim() || uploading}
-            style={{ background: file && name.trim() ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'rgba(255,255,255,0.08)', border: 'none', color: 'white', borderRadius: 10, padding: '9px', fontWeight: 700, fontSize: 13, cursor: file && name.trim() ? 'pointer' : 'default', opacity: uploading ? 0.6 : 1 }}>
+            style={{ background: file && name.trim() ? 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))' : 'rgba(255,255,255,0.08)', border: 'none', color: 'white', borderRadius: 10, padding: '9px', fontWeight: 700, fontSize: 13, cursor: file && name.trim() ? 'pointer' : 'default', opacity: uploading ? 0.6 : 1 }}>
             {uploading ? 'Загружаю...' : 'Добавить подарок'}
           </button>
         </div>
@@ -1296,7 +1296,7 @@ function GiftPickerModal({ sender, receiver, onClose, onGiftSent }) {
         <img src={selected.image_url} alt={selected.name} style={{ width: 120, height: 120, objectFit: 'contain', marginBottom: 12 }} />
         <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Подарок отправлен!</div>
         <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>«{selected.name}» улетел к {receiver.name}</div>
-        <button onClick={onClose} style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 28px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Ура!</button>
+        <button onClick={onClose} style={{ background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', border: 'none', color: 'white', borderRadius: 12, padding: '10px 28px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Ура!</button>
       </div>
     </div>
   );
@@ -1346,7 +1346,7 @@ function GiftPickerModal({ sender, receiver, onClose, onGiftSent }) {
               maxLength={120}
               style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px 14px', color: 'white', fontSize: 14, outline: 'none' }} />
             <button onClick={handleSend} disabled={sending}
-              style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: 'white', borderRadius: 12, padding: '12px', fontWeight: 800, fontSize: 14, cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.7 : 1 }}>
+              style={{ background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', border: 'none', color: 'white', borderRadius: 12, padding: '12px', fontWeight: 800, fontSize: 14, cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.7 : 1 }}>
               {sending ? 'Отправляю...' : 'Подарить 🎁'}
             </button>
           </div>
@@ -1936,7 +1936,7 @@ function ProfileWall({
                         {partnerUser && ['in_love','dating','married'].includes(profileUser.relationship_status) && (
                           <>
                             <span style={{ color: 'rgba(255,255,255,0.3)' }}>с</span>
-                            <button onClick={() => onUserClick?.(partnerUser)} style={{ background: 'none', border: 'none', padding: 0, color: '#a78bfa', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+                            <button onClick={() => onUserClick?.(partnerUser)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
                               {partnerUser.name}
                             </button>
                           </>
@@ -2171,7 +2171,7 @@ function ProfileWall({
     </div>
   );
 }
-function SettingsPanel({ user, onUserUpdate, onLogout }) {
+function SettingsPanel({ user, onUserUpdate, onLogout, bubbleThemeId, onBubbleTheme, accentThemeId, onAccentTheme }) {
   const [isPrivate, setIsPrivate] = useState(user?.is_private || false);
 
   const [oldPwd, setOldPwd] = useState("");
@@ -2312,9 +2312,33 @@ function SettingsPanel({ user, onUserUpdate, onLogout }) {
             <div style={{ fontSize: 14, fontWeight: 600 }}>Закрытый профиль</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Посты видны только подписчикам</div>
           </div>
-          <button onClick={togglePrivate} style={{ width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: isPrivate ? '#a78bfa' : 'rgba(255,255,255,0.15)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+          <button onClick={togglePrivate} style={{ width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: isPrivate ? 'var(--accent)' : 'rgba(255,255,255,0.15)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
             <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'white', position: 'absolute', top: 3, left: isPrivate ? 23 : 3, transition: 'left 0.2s' }} />
           </button>
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', padding: 16, marginTop: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 14, color: 'rgba(255,255,255,0.6)', letterSpacing: 0.5 }}>ВНЕШНИЙ ВИД</div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>Цвет акцента</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+          {ACCENT_PRESETS.map(p => (
+            <button key={p.id} onClick={() => onAccentTheme?.(p.id)} title={p.label}
+              style={{ width: 32, height: 32, borderRadius: '50%', background: p.accent, border: accentThemeId === p.id ? `3px solid white` : '3px solid transparent', cursor: 'pointer', outline: accentThemeId === p.id ? `2px solid ${p.accent}` : 'none', outlineOffset: 2, boxShadow: accentThemeId === p.id ? `0 0 8px ${p.accent}80` : 'none', transition: 'all 0.15s', flexShrink: 0 }} />
+          ))}
+        </div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>Цвет сообщений</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {BUBBLE_THEMES.map(t => (
+            <button key={t.id} onClick={() => { applyBubbleTheme(t.id); onBubbleTheme?.(t.id); }}
+              style={{ border: bubbleThemeId === t.id ? '2px solid var(--accent)' : '2px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 6, background: 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ height: 18, borderRadius: 6, background: t.me, alignSelf: 'flex-end', width: '75%' }} />
+                <div style={{ height: 14, borderRadius: 6, background: t.them, alignSelf: 'flex-start', width: '65%' }} />
+              </div>
+              <div style={{ fontSize: 10, color: bubbleThemeId === t.id ? 'var(--accent)' : 'rgba(255,255,255,0.4)', fontWeight: bubbleThemeId === t.id ? 700 : 400, textAlign: 'center' }}>{t.label}</div>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -2557,7 +2581,7 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
             onClick={() => fileRef.current?.click()}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', position: 'relative' }}>
               <Avatar url={currentUser?.avatar_url} name={currentUser?.name} size={52} />
-              <div style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18, borderRadius: '50%', background: '#a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, border: '2px solid #0b0b0b' }}>+</div>
+              <div style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, border: '2px solid #0b0b0b' }}>+</div>
             </div>
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Мой сторис</span>
           </div>
@@ -2568,7 +2592,7 @@ function StoriesBar({ currentUser, followingIds, onUserClick }) {
         {grouped.map(({ user, items }) => (
           <div key={user.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer' }}
             onClick={() => { setViewer({ list: items, index: 0 }); if (currentUser?.id) storiesService.addView(items[0].id, currentUser.id) }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', padding: 2, background: 'linear-gradient(135deg,#a78bfa,#ec4899)', flexShrink: 0 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', padding: 2, background: 'linear-gradient(135deg,var(--accent),#ec4899)', flexShrink: 0 }}>
               <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '2px solid #0b0b0b', overflow: 'hidden' }}>
                 <Avatar url={user.avatar_url} name={user.name} size={52} />
               </div>
@@ -2743,7 +2767,7 @@ function StoryEditor({ file, currentUser, onClose, onPublished }) {
         </button>
         <div style={{ flex: 1 }} />
         <button onClick={publish} disabled={publishing}
-          style={{ background: 'linear-gradient(135deg,#a78bfa,#ec4899)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 22px', fontWeight: 800, fontSize: 14, cursor: publishing ? 'default' : 'pointer', opacity: publishing ? 0.7 : 1 }}>
+          style={{ background: 'linear-gradient(135deg,var(--accent),#ec4899)', border: 'none', color: 'white', borderRadius: 12, padding: '10px 22px', fontWeight: 800, fontSize: 14, cursor: publishing ? 'default' : 'pointer', opacity: publishing ? 0.7 : 1 }}>
           {publishing ? 'Публикую...' : 'Опубликовать →'}
         </button>
       </div>
@@ -2865,13 +2889,13 @@ function ChannelItem({ channel, isSubscribed, role, onOpen, currentUser, onSubsc
     <div onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', transition: 'background 0.15s' }}
       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
       onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
-      <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 18, overflow: 'hidden', position: 'relative' }}>
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 18, overflow: 'hidden', position: 'relative' }}>
         {channel.avatar_url
           ? <img src={channel.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : channel.name?.[0]?.toUpperCase()}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: 'white' }}>{channel.name} {role === 'admin' && <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.2)', color: '#a78bfa', borderRadius: 6, padding: '1px 5px', marginLeft: 4 }}>admin</span>}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: 'white' }}>{channel.name} {role === 'admin' && <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.2)', color: 'var(--accent)', borderRadius: 6, padding: '1px 5px', marginLeft: 4 }}>admin</span>}</div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>@{channel.username}{channel.description ? ` · ${channel.description.slice(0, 40)}` : ''}</div>
       </div>
       {currentUser && role !== 'admin' && (
@@ -2948,12 +2972,12 @@ function CreateChannelModal({ currentUser, onClose, onCreate }) {
         {/* Avatar picker */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
           <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => avatarRef.current?.click()}>
-            <div style={{ width: 72, height: 72, borderRadius: 18, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 28, overflow: 'hidden', position: 'relative' }}>
+            <div style={{ width: 72, height: 72, borderRadius: 18, background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 28, overflow: 'hidden', position: 'relative' }}>
               {avatarPreview
                 ? <img src={avatarPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 : '📷'}
             </div>
-            <div style={{ position: 'absolute', bottom: -4, right: -4, width: 24, height: 24, borderRadius: '50%', background: '#a78bfa', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>+</div>
+            <div style={{ position: 'absolute', bottom: -4, right: -4, width: 24, height: 24, borderRadius: '50%', background: 'var(--accent)', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>+</div>
           </div>
           <input ref={avatarRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarPick} />
         </div>
@@ -2967,7 +2991,7 @@ function CreateChannelModal({ currentUser, onClose, onCreate }) {
           <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Описание (необязательно)" rows={2} style={{ ...inp, resize: 'none' }} />
           {error && <div style={{ fontSize: 12, color: '#f87171' }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button type="submit" disabled={saving} style={{ flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', borderRadius: 12, padding: '11px', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+            <button type="submit" disabled={saving} style={{ flex: 1, background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', border: 'none', borderRadius: 12, padding: '11px', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
               {saving ? 'Создание...' : 'Создать'}
             </button>
             <button type="button" onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '11px', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 14 }}>
@@ -3153,13 +3177,13 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
           <div style={{ marginTop: -24, marginBottom: 10 }}>
             <div style={{ position: 'relative', display: 'inline-block', cursor: isAdmin ? 'pointer' : undefined }}
               onClick={() => isAdmin && avatarFileRef.current?.click()}>
-              <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: '3px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 22, overflow: 'hidden', position: 'relative' }}>
+              <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', border: '3px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 22, overflow: 'hidden', position: 'relative' }}>
                 {localAvatar
                   ? <img src={localAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   : (avatarUploading ? '…' : channel.name?.[0]?.toUpperCase())}
               </div>
               {isAdmin && (
-                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: '#a78bfa', border: '2px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>
+                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', border: '2px solid #0b0b0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>
                   {avatarUploading ? '…' : '✎'}
                 </div>
               )}
@@ -3176,7 +3200,7 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
             </div>
             {currentUser && membership?.role !== 'admin' && (
               <button onClick={handleSubscribe} disabled={subLoading}
-                style={{ padding: '8px 16px', borderRadius: 12, border: membership ? '1px solid rgba(255,255,255,0.2)' : 'none', background: membership ? 'transparent' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
+                style={{ padding: '8px 16px', borderRadius: 12, border: membership ? '1px solid rgba(255,255,255,0.2)' : 'none', background: membership ? 'transparent' : 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
                 {subLoading ? '...' : membership ? 'Отписаться' : 'Подписаться'}
               </button>
             )}
@@ -3201,7 +3225,7 @@ function ChannelPage({ channel, currentUser, onBack, onUserClick }) {
               📷 Фото
             </button>
             <button type="submit" disabled={posting || (!composerText.trim() && !composerFile)}
-              style={{ flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', borderRadius: 10, padding: '7px', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: posting ? 0.6 : 1 }}>
+              style={{ flex: 1, background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', border: 'none', borderRadius: 10, padding: '7px', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: posting ? 0.6 : 1 }}>
               {posting ? 'Публикация...' : 'Опубликовать'}
             </button>
           </div>
@@ -3385,12 +3409,12 @@ function ChannelSettingsModal({ channel, currentUser, onClose, onUpdated }) {
         {/* Avatar upload */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
           <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => avatarFileRef.current?.click()}>
-            <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 24, overflow: 'hidden', position: 'relative' }}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg,var(--accent-indigo),var(--accent-mid))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 24, overflow: 'hidden', position: 'relative' }}>
               {localAvatar
                 ? <img src={localAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 : channel.name?.[0]?.toUpperCase()}
             </div>
-            <div style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: '#a78bfa', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
+            <div style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', border: '2px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
               {avatarUploading ? '…' : '✎'}
             </div>
           </div>
@@ -3723,7 +3747,7 @@ function LinkPreview({ url }) {
   if (error || !meta || !meta.title) return null
 
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 6, borderLeft: '3px solid #a78bfa', borderRadius: 8, background: 'rgba(167,139,250,0.07)', padding: '8px 10px', textDecoration: 'none', color: 'inherit' }}>
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 6, borderLeft: '3px solid var(--accent)', borderRadius: 8, background: 'rgba(167,139,250,0.07)', padding: '8px 10px', textDecoration: 'none', color: 'inherit' }}>
       {meta.image && <img src={meta.image} alt="" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 6, marginBottom: 6, display: 'block' }} onError={e => e.target.style.display='none'} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
         <img src={meta.favicon} alt="" width={14} height={14} onError={e => e.target.style.display='none'} />
@@ -3775,7 +3799,7 @@ function VoicePlayer({ src, isMe }) {
     return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
   }
 
-  const accent = isMe ? 'rgba(255,255,255,0.9)' : '#a78bfa';
+  const accent = isMe ? 'rgba(255,255,255,0.9)' : 'var(--accent)';
   const trackBg = isMe ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
 
   return (
@@ -3975,7 +3999,7 @@ function MessageBubble({
         </div>
       )}
       {/* static container: arrow positioned here, doesn't move */}
-      <div style={{ position: 'relative' }}>
+      <div className="msgBubbleWrap" style={{ position: 'relative' }}>
         {Math.abs(swipeX) > 4 && (
           <div style={{
             position: 'absolute',
@@ -3983,7 +4007,7 @@ function MessageBubble({
             top: '50%',
             transform: 'translateY(-50%)',
             opacity: Math.min(Math.abs(swipeX) / 55, 1),
-            color: '#a78bfa',
+            color: 'var(--accent)',
             fontSize: 20,
             pointerEvents: 'none',
             userSelect: 'none',
@@ -4015,11 +4039,11 @@ function MessageBubble({
             borderLeft: "3px solid rgba(167,139,250,0.7)",
             paddingLeft: 8,
             marginBottom: 7,
-            background: 'rgba(167,139,250,0.08)',
+            background: 'var(--accent-a08)',
             borderRadius: '0 8px 8px 0',
             padding: '4px 8px',
           }}>
-            <div style={{ fontWeight: 700, fontSize: 11, color: '#a78bfa', marginBottom: 2 }}>
+            <div style={{ fontWeight: 700, fontSize: 11, color: 'var(--accent)', marginBottom: 2 }}>
               {msg.reply_to.sender?.name || 'Сообщение'}
             </div>
             <div style={{ fontSize: 12, opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
@@ -4143,6 +4167,51 @@ function MessageBubble({
   );
 }
 
+const ACCENT_PRESETS = [
+  { id: 'violet', label: 'Фиолет',   accent:'#a78bfa', mid:'#8b5cf6', dark:'#7c3aed', indigo:'#6366f1', r:167,g:139,b:250, dr:124,dg:58,db:237 },
+  { id: 'blue',   label: 'Синий',    accent:'#60a5fa', mid:'#3b82f6', dark:'#2563eb', indigo:'#4f46e5', r:96, g:165,b:250, dr:37, dg:99,db:235 },
+  { id: 'mint',   label: 'Мята',     accent:'#34d399', mid:'#10b981', dark:'#059669', indigo:'#0d9488', r:52, g:211,b:153, dr:5,  dg:150,db:105 },
+  { id: 'pink',   label: 'Розовый',  accent:'#f472b6', mid:'#ec4899', dark:'#db2777', indigo:'#e11d48', r:244,g:114,b:182, dr:219,dg:39,db:119 },
+  { id: 'orange', label: 'Оранжев',  accent:'#fb923c', mid:'#f97316', dark:'#ea580c', indigo:'#dc2626', r:251,g:146,b:60,  dr:234,dg:88,db:12  },
+  { id: 'red',    label: 'Красный',  accent:'#f87171', mid:'#ef4444', dark:'#dc2626', indigo:'#b91c1c', r:248,g:113,b:113, dr:220,dg:38,db:38  },
+  { id: 'yellow', label: 'Золото',   accent:'#fbbf24', mid:'#f59e0b', dark:'#d97706', indigo:'#b45309', r:251,g:191,b:36,  dr:217,dg:119,db:6  },
+  { id: 'slate',  label: 'Серебро',  accent:'#94a3b8', mid:'#64748b', dark:'#475569', indigo:'#334155', r:148,g:163,b:184, dr:71, dg:85,db:105  },
+];
+
+function applyAccentTheme(id) {
+  const t = ACCENT_PRESETS.find(p => p.id === id) || ACCENT_PRESETS[0];
+  const s = document.documentElement.style;
+  s.setProperty('--accent',         t.accent);
+  s.setProperty('--accent-mid',     t.mid);
+  s.setProperty('--accent-dark',    t.dark);
+  s.setProperty('--accent-indigo',  t.indigo);
+  s.setProperty('--accent-a08',     `rgba(${t.r},${t.g},${t.b},0.08)`);
+  s.setProperty('--accent-a15',     `rgba(${t.r},${t.g},${t.b},0.15)`);
+  s.setProperty('--accent-a20',     `rgba(${t.r},${t.g},${t.b},0.20)`);
+  s.setProperty('--accent-dark-a15',`rgba(${t.dr},${t.dg},${t.db},0.15)`);
+  s.setProperty('--accent-dark-a30',`rgba(${t.dr},${t.dg},${t.db},0.30)`);
+  localStorage.setItem('lvkosp_accent_theme', id);
+}
+
+const BUBBLE_THEMES = [
+  { id: 'default', label: 'Индиго',   me: 'linear-gradient(135deg,#2a2250,#1e1840)', them: 'rgba(50,50,62,0.95)' },
+  { id: 'blue',    label: 'Сапфир',   me: 'linear-gradient(135deg,#0f3460,#0a2248)', them: 'rgba(18,32,52,0.95)' },
+  { id: 'teal',    label: 'Бирюза',   me: 'linear-gradient(135deg,#0d4d4d,#063838)', them: 'rgba(14,36,36,0.95)' },
+  { id: 'forest',  label: 'Лес',      me: 'linear-gradient(135deg,#1a4a28,#0f3018)', them: 'rgba(16,32,20,0.95)' },
+  { id: 'rose',    label: 'Роза',     me: 'linear-gradient(135deg,#6b1a4a,#4a0e32)', them: 'rgba(44,18,34,0.95)' },
+  { id: 'crimson', label: 'Гранат',   me: 'linear-gradient(135deg,#5a1010,#3c0808)', them: 'rgba(38,16,16,0.95)' },
+  { id: 'slate',   label: 'Грифель',  me: 'linear-gradient(135deg,#2d2d3a,#1e1e28)', them: 'rgba(30,30,36,0.95)' },
+  { id: 'amber',   label: 'Янтарь',   me: 'linear-gradient(135deg,#4a3010,#302008)', them: 'rgba(36,28,16,0.95)' },
+  { id: 'night',   label: 'Ночь',     me: 'linear-gradient(135deg,#111118,#080810)', them: 'rgba(22,22,26,0.98)' },
+];
+
+function applyBubbleTheme(id) {
+  const t = BUBBLE_THEMES.find(t => t.id === id) || BUBBLE_THEMES[0];
+  document.documentElement.style.setProperty('--bubble-me', t.me);
+  document.documentElement.style.setProperty('--bubble-them', t.them);
+  localStorage.setItem('lvkosp_bubble_theme', id);
+}
+
 const WALLPAPERS = [
   { id: '', label: 'По умолчанию', bg: '' },
   { id: 'blue', label: 'Океан', bg: 'linear-gradient(160deg,#0a1628 0%,#0d2240 50%,#102a50 100%)' },
@@ -4159,6 +4228,16 @@ export default function App() {
   // аутф
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState(null);
+  const [bubbleThemeId, setBubbleThemeId] = useState(() => {
+    const saved = localStorage.getItem('lvkosp_bubble_theme') || 'default';
+    applyBubbleTheme(saved);
+    return saved;
+  });
+  const [accentThemeId, setAccentThemeId] = useState(() => {
+    const saved = localStorage.getItem('lvkosp_accent_theme') || 'violet';
+    applyAccentTheme(saved);
+    return saved;
+  });
   const [serverOnline, setServerOnline] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState("login");
@@ -5105,7 +5184,7 @@ export default function App() {
                     <div style={{ position: "relative" }}>
                       <Avatar url={chat.avatarUrl} name={chat.name} size={44} />
                       {chat.isGroup
-                        ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: '#7c3aed', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
+                        ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--accent-dark)', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
                         : <div className={chat.status === "online" ? "online-status" : "offline-status"} />
                       }
                     </div>
@@ -5198,7 +5277,7 @@ export default function App() {
                     <div style={{ position: "relative" }}>
                       <Avatar url={activeChat.avatarUrl} name={activeChat.name} size={44} />
                       {activeChat.isGroup
-                        ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: '#7c3aed', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
+                        ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--accent-dark)', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
                         : <div className={activeChat.status === "online" ? "online-status" : "offline-status"} />
                       }
                     </div>
@@ -5261,7 +5340,7 @@ export default function App() {
                     <>
                       {activeChat.isGroup && (
                         <button className="iconBtn" title="Настройки группы"
-                          style={{ color: groupSettingsOpen ? '#a78bfa' : undefined }}
+                          style={{ color: groupSettingsOpen ? 'var(--accent)' : undefined }}
                           onClick={() => setGroupSettingsOpen(v => !v)}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="1.6"/></svg>
                         </button>
@@ -5351,7 +5430,7 @@ export default function App() {
                         <svg width="17" height="17" viewBox="0 0 24 24" fill={activeChat?.pinned ? 'currentColor' : 'none'}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
                       </button>
                       <button className="iconBtn" title={activeChat?.archived ? 'Из архива' : 'В архив'}
-                        style={{ color: activeChat?.archived ? '#a78bfa' : 'rgba(255,255,255,0.45)' }}
+                        style={{ color: activeChat?.archived ? 'var(--accent)' : 'rgba(255,255,255,0.45)' }}
                         onClick={async () => {
                           if (!activeChatId || !user?.id) return
                           const wasArchived = activeChat?.archived
@@ -5419,23 +5498,50 @@ export default function App() {
                 </div>
               )}
               {wallpaperPickerOpen && activeChat && (
-                <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(0,0,0,0.2)', flexShrink: 0 }}>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 600, marginBottom: 8, letterSpacing: 0.5 }}>ОБОИ ЧАТА</div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(0,0,0,0.25)', flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 600, marginBottom: 10, letterSpacing: 0.5 }}>ОБОИ ЧАТА</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     {WALLPAPERS.map(w => (
                       <button key={w.id} onClick={() => {
                         if (w.id) localStorage.setItem(`lvkosp_wp_${activeChatId}`, w.bg)
                         else localStorage.removeItem(`lvkosp_wp_${activeChatId}`)
                         setWallpaperPickerOpen(false)
                       }} title={w.label}
-                        style={{ width: 36, height: 36, borderRadius: 10, border: chatWallpaper === w.bg && w.id ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.12)', cursor: 'pointer', background: w.bg || 'rgba(255,255,255,0.06)', flexShrink: 0, position: 'relative' }}>
-                        {!w.id && <span style={{ fontSize: 14 }}>✕</span>}
+                        style={{ width: 38, height: 38, borderRadius: 10, border: chatWallpaper === w.bg && w.id ? '2px solid var(--accent)' : '2px solid rgba(255,255,255,0.12)', cursor: 'pointer', background: w.bg || 'rgba(255,255,255,0.06)', flexShrink: 0, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {!w.id && <span style={{ fontSize: 16 }}>✕</span>}
                       </button>
                     ))}
+                    {/* Photo upload */}
+                    <label style={{ width: 38, height: 38, borderRadius: 10, border: '2px dashed rgba(255,255,255,0.2)', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }} title="Своё фото">
+                      📷
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        const dataUrl = await new Promise(resolve => {
+                          const img = new Image();
+                          const url = URL.createObjectURL(file);
+                          img.onload = () => {
+                            URL.revokeObjectURL(url);
+                            const maxW = 1080;
+                            let w = img.width, h = img.height;
+                            if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+                            const c = document.createElement('canvas'); c.width = w; c.height = h;
+                            c.getContext('2d').drawImage(img, 0, 0, w, h);
+                            resolve(c.toDataURL('image/jpeg', 0.65));
+                          };
+                          img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+                          img.src = url;
+                        });
+                        if (!dataUrl) return;
+                        localStorage.setItem(`lvkosp_wp_${activeChatId}`, `url("${dataUrl}")`);
+                        setWallpaperPickerOpen(false);
+                      }} />
+                    </label>
                   </div>
                 </div>
               )}
-              <div className="chatBody" ref={chatBodyRef} style={activeChat && chatWallpaper ? { background: chatWallpaper } : {}}>
+              <div className="chatBody" ref={chatBodyRef} style={activeChat && chatWallpaper ? { background: chatWallpaper, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
                 {!activeChat ? (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                     <div style={{ padding: '16px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -5443,11 +5549,11 @@ export default function App() {
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <button onClick={() => setCreateGroupOpen(true)}
                           title="Создать группу"
-                          style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 8, fontSize: 13, color: '#a78bfa', cursor: 'pointer', padding: '4px 10px', fontWeight: 600 }}>
+                          style={{ background: 'var(--accent-dark-a15)', border: '1px solid var(--accent-dark-a30)', borderRadius: 8, fontSize: 13, color: 'var(--accent)', cursor: 'pointer', padding: '4px 10px', fontWeight: 600 }}>
                           + Группа
                         </button>
                         <button onClick={() => setShowArchived(v => !v)}
-                          style={{ background: 'none', border: 'none', fontSize: 12, color: showArchived ? '#a78bfa' : 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '4px 8px', fontWeight: 600 }}>
+                          style={{ background: 'none', border: 'none', fontSize: 12, color: showArchived ? 'var(--accent)' : 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '4px 8px', fontWeight: 600 }}>
                           {showArchived ? '← Назад' : 'Архив'}
                         </button>
                       </div>
@@ -5474,7 +5580,7 @@ export default function App() {
                               <div style={{ position: 'relative' }}>
                                 <Avatar url={chat.avatarUrl} name={chat.name} size={46} />
                                 {chat.isGroup
-                                  ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: '#7c3aed', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
+                                  ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--accent-dark)', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
                                   : <div className={chat.status === 'online' ? 'online-status' : 'offline-status'} />
                                 }
                               </div>
@@ -5547,10 +5653,10 @@ export default function App() {
               </div>
 
               {replyTo && (
-                <div style={{ padding: "8px 14px", background: "rgba(20,18,35,0.98)", borderTop: "1px solid rgba(167,139,250,0.2)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                  <div style={{ width: 3, alignSelf: 'stretch', background: '#a78bfa', borderRadius: 3, flexShrink: 0 }} />
+                <div style={{ padding: "8px 14px", background: "rgba(20,18,35,0.98)", borderTop: "1px solid var(--accent-a20)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  <div style={{ width: 3, alignSelf: 'stretch', background: 'var(--accent)', borderRadius: 3, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", marginBottom: 2 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>
                       ↩ {replyTo.sender?.name || 'Сообщение'}
                     </div>
                     <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -5631,7 +5737,7 @@ export default function App() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontSize: 12, color: '#ef4444', minWidth: 36 }}>{Math.floor(recordingTime/60).toString().padStart(2,'0')}:{(recordingTime%60).toString().padStart(2,'0')}</span>
                       <button type="button" onClick={() => stopRecording(false)} style={{ background: 'rgba(255,80,80,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: 12 }}>✕</button>
-                      <button type="button" onClick={() => stopRecording(true)} style={{ background: 'rgba(167,139,250,0.2)', border: 'none', borderRadius: 8, padding: '4px 8px', color: '#a78bfa', cursor: 'pointer', fontSize: 12 }}>✓</button>
+                      <button type="button" onClick={() => stopRecording(true)} style={{ background: 'var(--accent-a20)', border: 'none', borderRadius: 8, padding: '4px 8px', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}>✓</button>
                     </div>
                   ) : (
                     <button type="button" className="clipBtn" onClick={startRecording} title="Голосовое сообщение">
@@ -6247,7 +6353,7 @@ export default function App() {
               className="view-content"
               style={{ overflowY: "auto", padding: 20 }}
             >
-              <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={doLogout} />
+              <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={doLogout} bubbleThemeId={bubbleThemeId} onBubbleTheme={id => setBubbleThemeId(id)} accentThemeId={accentThemeId} onAccentTheme={id => { applyAccentTheme(id); setAccentThemeId(id); }} />
               {user?.is_admin && (
                 <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>ПОДАРКИ</div>
@@ -6278,7 +6384,7 @@ export default function App() {
                 width: 52,
                 height: 52,
                 borderRadius: 14,
-                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                background: "linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-mid) 100%)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -6498,7 +6604,7 @@ export default function App() {
           >
             <div style={{ fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
               Переслать в...
-              {forwardLoading && <div style={{ width: 16, height: 16, border: '2px solid #a78bfa', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />}
+              {forwardLoading && <div style={{ width: 16, height: 16, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />}
             </div>
             <div
               style={{
@@ -6726,7 +6832,7 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
               <div style={{ display: 'flex', gap: 6 }}>
                 <input value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSaveName()}
                   style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', color: 'white', fontSize: 15, fontWeight: 700 }} autoFocus />
-                <button onClick={handleSaveName} disabled={savingName} style={{ background: '#7c3aed', border: 'none', borderRadius: 10, color: 'white', padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>{savingName ? '...' : '✓'}</button>
+                <button onClick={handleSaveName} disabled={savingName} style={{ background: 'var(--accent-dark)', border: 'none', borderRadius: 10, color: 'white', padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>{savingName ? '...' : '✓'}</button>
                 <button onClick={() => setEditingName(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 10, color: 'white', padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>✕</button>
               </div>
             ) : (
@@ -6741,7 +6847,7 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
               <div style={{ marginTop: 6, display: 'flex', gap: 4, alignItems: 'flex-start' }}>
                 <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
                   style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '5px 8px', color: 'white', fontSize: 12, resize: 'none', fontFamily: 'inherit' }} autoFocus />
-                <button onClick={handleSaveDesc} disabled={savingDesc} style={{ background: '#7c3aed', border: 'none', borderRadius: 8, color: 'white', padding: '4px 8px', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>{savingDesc ? '...' : '✓'}</button>
+                <button onClick={handleSaveDesc} disabled={savingDesc} style={{ background: 'var(--accent-dark)', border: 'none', borderRadius: 8, color: 'white', padding: '4px 8px', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>{savingDesc ? '...' : '✓'}</button>
                 <button onClick={() => setEditingDesc(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, color: 'white', padding: '4px 7px', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✕</button>
               </div>
             ) : (
@@ -6756,7 +6862,7 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
         <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
           {[['members', 'Участники'], ['add', `+ Добавить (${addableFriends.length})`]].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
-              style={{ flex: 1, padding: '7px 0', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: tab === key ? '#7c3aed' : 'rgba(255,255,255,0.07)', color: 'white' }}>
+              style={{ flex: 1, padding: '7px 0', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: tab === key ? 'var(--accent-dark)' : 'rgba(255,255,255,0.07)', color: 'white' }}>
               {label}
             </button>
           ))}
@@ -6769,7 +6875,7 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px' }}>
                 <Avatar url={m.avatar_url} name={m.name} size={38} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{m.name}{m.id === currentUser?.id && <span style={{ fontSize: 11, color: '#a78bfa', marginLeft: 6 }}>вы</span>}</div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{m.name}{m.id === currentUser?.id && <span style={{ fontSize: 11, color: 'var(--accent)', marginLeft: 6 }}>вы</span>}</div>
                   <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{m.username}</div>
                 </div>
                 {m.id !== currentUser?.id && (
@@ -6787,13 +6893,13 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
               {addableFriends.length === 0
                 ? <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, padding: '16px 0' }}>Все друзья уже в группе</div>
                 : addableFriends.map(f => (
-                  <div key={f.id} onClick={() => toggleAdd(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', cursor: 'pointer', borderRadius: 10, background: toAdd.includes(f.id) ? 'rgba(124,58,237,0.15)' : 'transparent' }}>
+                  <div key={f.id} onClick={() => toggleAdd(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', cursor: 'pointer', borderRadius: 10, background: toAdd.includes(f.id) ? 'var(--accent-dark-a15)' : 'transparent' }}>
                     <Avatar url={f.avatar_url} name={f.name} size={38} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{f.name}</div>
                       <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{f.username}</div>
                     </div>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${toAdd.includes(f.id) ? '#7c3aed' : 'rgba(255,255,255,0.2)'}`, background: toAdd.includes(f.id) ? '#7c3aed' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${toAdd.includes(f.id) ? 'var(--accent-dark)' : 'rgba(255,255,255,0.2)'}`, background: toAdd.includes(f.id) ? 'var(--accent-dark)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {toAdd.includes(f.id) && <span style={{ color: 'white', fontSize: 13 }}>✓</span>}
                     </div>
                   </div>
@@ -6802,7 +6908,7 @@ function GroupSettingsModal({ chat, currentUser, friends, onClose, onUpdated }) 
             </div>
             {toAdd.length > 0 && (
               <button onClick={handleAdd} disabled={adding}
-                style={{ marginTop: 12, padding: '12px', borderRadius: 12, background: '#7c3aed', border: 'none', color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                style={{ marginTop: 12, padding: '12px', borderRadius: 12, background: 'var(--accent-dark)', border: 'none', color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
                 {adding ? 'Добавляем...' : `Добавить ${toAdd.length} чел.`}
               </button>
             )}
@@ -6850,13 +6956,13 @@ function CreateGroupModal({ currentUser, friends, onClose, onCreate }) {
           {friends.length === 0
             ? <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Нет друзей для добавления</div>
             : friends.map(f => (
-              <div key={f.id} onClick={() => toggle(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 4px', cursor: 'pointer', borderRadius: 10, background: selected.includes(f.id) ? 'rgba(124,58,237,0.15)' : 'transparent' }}>
+              <div key={f.id} onClick={() => toggle(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 4px', cursor: 'pointer', borderRadius: 10, background: selected.includes(f.id) ? 'var(--accent-dark-a15)' : 'transparent' }}>
                 <Avatar url={f.avatar_url} name={f.name} size={38} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{f.name}</div>
                   <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>@{f.username}</div>
                 </div>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${selected.includes(f.id) ? '#7c3aed' : 'rgba(255,255,255,0.2)'}`, background: selected.includes(f.id) ? '#7c3aed' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${selected.includes(f.id) ? 'var(--accent-dark)' : 'rgba(255,255,255,0.2)'}`, background: selected.includes(f.id) ? 'var(--accent-dark)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {selected.includes(f.id) && <span style={{ color: 'white', fontSize: 13 }}>✓</span>}
                 </div>
               </div>
@@ -6864,7 +6970,7 @@ function CreateGroupModal({ currentUser, friends, onClose, onCreate }) {
           }
         </div>
         <button onClick={handleCreate} disabled={!name.trim() || selected.length < 1 || creating}
-          style={{ padding: '12px', borderRadius: 12, background: name.trim() && selected.length > 0 ? '#7c3aed' : 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ padding: '12px', borderRadius: 12, background: name.trim() && selected.length > 0 ? 'var(--accent-dark)' : 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
           {creating ? 'Создаём...' : `Создать группу (${selected.length + 1} чел.)`}
         </button>
       </div>

@@ -325,7 +325,7 @@ export class AuthService {
             supabase
               .from("profiles")
               .select(
-                "id, username, name, avatar_url, banner_url, bio, status, last_seen, is_admin",
+                "id, username, name, avatar_url, banner_url, bio, status, last_seen, is_admin, birth_date, relationship_status, partner_id",
               )
               .eq("id", userId)
               .maybeSingle()
@@ -356,7 +356,7 @@ export class AuthService {
         supabase
           .from("profiles")
           .select(
-            "id, username, name, avatar_url, banner_url, bio, status, last_seen, is_admin",
+            "id, username, name, avatar_url, banner_url, bio, status, last_seen, is_admin, birth_date, relationship_status, partner_id",
           )
           .eq("id", userId)
           .maybeSingle(),
@@ -397,6 +397,9 @@ export class AuthService {
       const safe = {};
       if (updates?.name?.trim?.()) safe.name = updates.name.trim();
       if (updates?.bio !== undefined) safe.bio = updates.bio?.trim?.() ?? '';
+      if (updates?.birth_date !== undefined) safe.birth_date = updates.birth_date || null;
+      if (updates?.relationship_status !== undefined) safe.relationship_status = updates.relationship_status || null;
+      if (updates?.partner_id !== undefined) safe.partner_id = updates.partner_id || null;
       if (updates?.username?.trim?.()) {
         const uname = updates.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
         if (uname.length < 3) return { success: false, error: 'Username минимум 3 символа' };

@@ -1475,6 +1475,12 @@ function ProfileWall({
   const [editName, setEditName] = useState(profileUser?.name || '');
   const [editUsername, setEditUsername] = useState(profileUser?.username || '');
   const [editBio, setEditBio] = useState(profileUser?.bio || '');
+  const [editBirthDate, setEditBirthDate] = useState(profileUser?.birth_date || '');
+  const [editRelStatus, setEditRelStatus] = useState(profileUser?.relationship_status || '');
+  const [editPartnerId, setEditPartnerId] = useState(profileUser?.partner_id || null);
+  const [partnerUser, setPartnerUser] = useState(null);
+  const [partnerSearch, setPartnerSearch] = useState('');
+  const [partnerResults, setPartnerResults] = useState([]);
   const [editSaving, setEditSaving] = useState(false);
   const [editMsg, setEditMsg] = useState(null);
   const [activeGift, setActiveGift] = useState(null);
@@ -1569,16 +1575,33 @@ function ProfileWall({
       setEditName(profileUser?.name || '');
       setEditUsername(profileUser?.username || '');
       setEditBio(profileUser?.bio || '');
+      setEditBirthDate(profileUser?.birth_date || '');
+      setEditRelStatus(profileUser?.relationship_status || '');
+      setEditPartnerId(profileUser?.partner_id || null);
+      setPartnerSearch('');
+      setPartnerResults([]);
       setEditMsg(null);
     }
   }, [profileUser?.id, editingProfile]);
+
+  useEffect(() => {
+    if (!profileUser?.partner_id) { setPartnerUser(null); return; }
+    authService.getProfile(profileUser.partner_id).then(p => setPartnerUser(p)).catch(() => {});
+  }, [profileUser?.partner_id]);
 
   async function saveProfileInline(e) {
     e.preventDefault();
     if (!editName.trim()) return;
     setEditSaving(true);
     setEditMsg(null);
-    const updates = { name: editName.trim(), bio: editBio.trim() };
+    const relNeedsPartner = ['in_love','dating','married'].includes(editRelStatus);
+    const updates = {
+      name: editName.trim(),
+      bio: editBio.trim(),
+      birth_date: editBirthDate || null,
+      relationship_status: editRelStatus || null,
+      partner_id: relNeedsPartner ? (editPartnerId || null) : null,
+    };
     if (editUsername.trim() && editUsername.trim() !== profileUser?.username)
       updates.username = editUsername.trim();
     const res = await authService.updateProfile(currentUser.id, updates);
@@ -1800,6 +1823,65 @@ function ProfileWall({
                   rows={2}
                   style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px', color: 'white', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit' }}
                 />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 2 }}>Дата рождения (необязательно)</label>
+                  <input type="date" value={editBirthDate} onChange={e => setEditBirthDate(e.target.value)}
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '7px 12px', color: 'white', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 2 }}>Семейное положение</label>
+                  <select value={editRelStatus} onChange={e => { setEditRelStatus(e.target.value); setEditPartnerId(null); setPartnerSearch(''); setPartnerResults([]); }}
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '7px 12px', color: 'white', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box', colorScheme: 'dark' }}>
+                    <option value="">Не указано</option>
+                    <option value="single">Свободен/Свободна</option>
+                    <option value="in_love">Влюблён/Влюблена</option>
+                    <option value="dating">Встречается</option>
+                    <option value="married">Женат/Замужем</option>
+                    <option value="complicated">Всё сложно</option>
+                    <option value="divorced">В разводе</option>
+                    <option value="widowed">Вдовец/Вдова</option>
+                  </select>
+                  {['in_love','dating','married'].includes(editRelStatus) && (
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        value={partnerSearch}
+                        onChange={async e => {
+                          const q = e.target.value;
+                          setPartnerSearch(q);
+                          if (q.trim().length > 1) {
+                            const res = await authService.searchUsers(q);
+                            setPartnerResults(res.filter(u => u.id !== currentUser?.id));
+                          } else setPartnerResults([]);
+                        }}
+                        placeholder={editPartnerId ? '✓ Партнёр выбран — изменить?' : 'Поиск пользователя...'}
+                        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '7px 12px', color: 'white', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                      />
+                      {partnerResults.length > 0 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, zIndex: 20, overflow: 'hidden', marginTop: 4 }}>
+                          {partnerResults.slice(0,5).map(u => (
+                            <button key={u.id} type="button"
+                              onClick={() => { setEditPartnerId(u.id); setPartnerSearch(''); setPartnerResults([]); }}
+                              style={{ width: '100%', background: 'none', border: 'none', padding: '8px 12px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' }}
+                              onMouseEnter={ev => ev.currentTarget.style.background='rgba(255,255,255,0.07)'}
+                              onMouseLeave={ev => ev.currentTarget.style.background='none'}>
+                              <Avatar url={u.avatar_url} name={u.name} size={24} />
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600 }}>{u.name}</div>
+                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>@{u.username}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {editPartnerId && !partnerSearch && (
+                        <button type="button" onClick={() => setEditPartnerId(null)}
+                          style={{ marginTop: 4, background: 'none', border: 'none', color: '#f87171', fontSize: 11, cursor: 'pointer', padding: 0 }}>
+                          Убрать партнёра
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {editMsg && <div style={{ fontSize: 12, color: editMsg.ok ? '#4ade80' : '#f87171' }}>{editMsg.text}</div>}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button type="submit" disabled={editSaving}
@@ -1829,6 +1911,38 @@ function ProfileWall({
                 {profileUser?.bio && (
                   <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", lineHeight: 1.5, marginBottom: 8 }}>
                     {profileUser.bio}
+                  </div>
+                )}
+                {(profileUser?.birth_date || profileUser?.relationship_status) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                    {profileUser.birth_date && (
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span>🎂</span>
+                        <span>{new Date(profileUser.birth_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                      </div>
+                    )}
+                    {profileUser.relationship_status && profileUser.relationship_status !== '' && (
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                        <span>💑</span>
+                        <span>{{
+                          single: 'Свободен/Свободна',
+                          in_love: 'Влюблён/Влюблена',
+                          dating: 'Встречается',
+                          married: 'Женат/Замужем',
+                          complicated: 'Всё сложно',
+                          divorced: 'В разводе',
+                          widowed: 'Вдовец/Вдова',
+                        }[profileUser.relationship_status] || profileUser.relationship_status}</span>
+                        {partnerUser && ['in_love','dating','married'].includes(profileUser.relationship_status) && (
+                          <>
+                            <span style={{ color: 'rgba(255,255,255,0.3)' }}>с</span>
+                            <button onClick={() => onUserClick?.(partnerUser)} style={{ background: 'none', border: 'none', padding: 0, color: '#a78bfa', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+                              {partnerUser.name}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -3623,6 +3737,8 @@ function LinkPreview({ url }) {
 
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
+let _voiceCurrentAudio = null;
+
 function VoicePlayer({ src, isMe }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
@@ -3630,12 +3746,28 @@ function VoicePlayer({ src, isMe }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [loadError, setLoadError] = useState(false);
+  const [errorDetail, setErrorDetail] = useState('');
 
   function toggle() {
     const a = audioRef.current;
-    if (!a || loadError) return;
-    if (playing) { a.pause(); setPlaying(false); }
-    else { a.play().then(() => setPlaying(true)).catch(() => setLoadError(true)); }
+    if (!a) return;
+    if (loadError) {
+      // retry once
+      setLoadError(false);
+      setErrorDetail('');
+      a.load();
+      a.play().then(() => setPlaying(true)).catch(err => { setLoadError(true); setErrorDetail(err.message || ''); });
+      return;
+    }
+    if (playing) {
+      a.pause();
+    } else {
+      if (_voiceCurrentAudio && _voiceCurrentAudio !== a) {
+        _voiceCurrentAudio.pause();
+      }
+      _voiceCurrentAudio = a;
+      a.play().then(() => setPlaying(true)).catch(err => { setLoadError(true); setErrorDetail(err.message || ''); });
+    }
   }
 
   function fmt(s) {
@@ -3652,11 +3784,11 @@ function VoicePlayer({ src, isMe }) {
         onTimeUpdate={e => { const a = e.target; setCurrentTime(a.currentTime); setProgress(a.duration ? a.currentTime / a.duration : 0); }}
         onLoadedMetadata={e => { setDuration(e.target.duration); setLoadError(false); }}
         onEnded={() => { setPlaying(false); setProgress(0); setCurrentTime(0); if (audioRef.current) audioRef.current.currentTime = 0; }}
-        onError={() => setLoadError(true)}
+        onError={e => { const err = e.target?.error; setLoadError(true); setErrorDetail(err?.message || ''); }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
       />
-      <button onClick={toggle} title={loadError ? 'Формат не поддерживается браузером' : undefined} style={{ width: 34, height: 34, borderRadius: '50%', background: loadError ? 'rgba(239,68,68,0.5)' : accent, border: 'none', cursor: loadError ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isMe ? '#1a1a2e' : 'white' }}>
+      <button onClick={toggle} title={loadError ? `Не удалось воспроизвести. Возможно, браузер не поддерживает этот формат аудио. Нажмите, чтобы попробовать ещё раз.${errorDetail ? ' (' + errorDetail + ')' : ''}` : undefined} style={{ width: 34, height: 34, borderRadius: '50%', background: loadError ? 'rgba(239,68,68,0.5)' : accent, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isMe ? '#1a1a2e' : 'white' }}>
         {loadError
           ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
           : playing
@@ -3705,14 +3837,26 @@ function MessageBubble({
   const [showEmoji, setShowEmoji] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const touchStartX = useRef(0);
+  const swipeTriggered = useRef(false);
 
-  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
+  function onTouchStart(e) {
+    touchStartX.current = e.touches[0].clientX;
+    swipeTriggered.current = false;
+  }
   function onTouchMove(e) {
     const dx = e.touches[0].clientX - touchStartX.current;
-    if (dx > 0 && dx < 80) setSwipeX(dx);
+    if (isMe) {
+      if (dx < 0 && dx > -70) setSwipeX(dx);
+    } else {
+      if (dx > 0 && dx < 70) setSwipeX(dx);
+    }
   }
   function onTouchEnd() {
-    if (swipeX > 50) onReply?.(msg);
+    const abs = Math.abs(swipeX);
+    if (abs > 50 && !swipeTriggered.current) {
+      swipeTriggered.current = true;
+      onReply?.(msg);
+    }
     setSwipeX(0);
   }
 
@@ -3768,14 +3912,8 @@ function MessageBubble({
       className={`msgRow ${isMe ? "me" : "them"}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => { setHover(false); setShowEmoji(false); }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      style={{ position: "relative", alignItems: 'flex-end', transform: swipeX ? `translateX(${swipeX}px)` : undefined, transition: swipeX ? 'none' : 'transform 0.2s ease' }}
+      style={{ position: "relative", alignItems: 'flex-end' }}
     >
-      {swipeX > 20 && (
-        <div style={{ position: 'absolute', left: -32, top: '50%', transform: 'translateY(-50%)', opacity: swipeX / 80, color: 'rgba(255,255,255,0.6)', fontSize: 18, pointerEvents: 'none' }}>↩</div>
-      )}
       {isGroup && !isMe && (
         <div style={{ flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, marginRight: 6, cursor: 'pointer' }}
           onClick={() => onUserClick?.(msg.sender)}>
@@ -3836,6 +3974,32 @@ function MessageBubble({
           </div>
         </div>
       )}
+      {/* static container: arrow positioned here, doesn't move */}
+      <div style={{ position: 'relative' }}>
+        {Math.abs(swipeX) > 4 && (
+          <div style={{
+            position: 'absolute',
+            [isMe ? 'right' : 'left']: -36,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            opacity: Math.min(Math.abs(swipeX) / 55, 1),
+            color: '#a78bfa',
+            fontSize: 20,
+            pointerEvents: 'none',
+            userSelect: 'none',
+            transition: 'opacity 0.05s',
+          }}>↩</div>
+        )}
+        {/* swipeable: only the bubble moves */}
+        <div
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          style={{
+            transform: `translateX(${swipeX}px)`,
+            transition: swipeX ? 'none' : 'transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)',
+          }}
+        >
       <div className="msgBubble">
         {!isMe && isGroup && msg.sender?.name && (
           <div
@@ -3847,27 +4011,19 @@ function MessageBubble({
           </div>
         )}
         {msg.reply_to && (
-          <div
-            style={{
-              borderLeft: "2px solid rgba(255,255,255,0.3)",
-              paddingLeft: 8,
-              marginBottom: 6,
-              opacity: 0.65,
-              fontSize: 12,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 1 }}>
-              {msg.reply_to.sender?.name}
+          <div style={{
+            borderLeft: "3px solid rgba(167,139,250,0.7)",
+            paddingLeft: 8,
+            marginBottom: 7,
+            background: 'rgba(167,139,250,0.08)',
+            borderRadius: '0 8px 8px 0',
+            padding: '4px 8px',
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 11, color: '#a78bfa', marginBottom: 2 }}>
+              {msg.reply_to.sender?.name || 'Сообщение'}
             </div>
-            <div
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                maxWidth: 220,
-              }}
-            >
-              {msg.reply_to.type === "image" ? "📷 Фото" : msg.reply_to.content}
+            <div style={{ fontSize: 12, opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+              {msg.reply_to.type === "voice" ? "🎙 Голосовое" : msg.reply_to.type === "image" ? "📷 Фото" : msg.reply_to.content}
             </div>
           </div>
         )}
@@ -3981,6 +4137,8 @@ function MessageBubble({
           )}
         </div>
       </div>
+        </div>{/* closes swipeable wrapper */}
+      </div>{/* closes static container */}
     </div>
   );
 }
@@ -5389,59 +5547,17 @@ export default function App() {
               </div>
 
               {replyTo && (
-                <div
-                  style={{
-                    padding: "6px 16px",
-                    borderTop: "1px solid rgba(255,255,255,0.07)",
-                    background: "rgba(0,0,0,0.15)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    flexShrink: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      flex: 1,
-                      borderLeft: "2px solid rgba(255,255,255,0.35)",
-                      paddingLeft: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "rgba(255,255,255,0.55)",
-                        marginBottom: 1,
-                      }}
-                    >
-                      Ответ для {replyTo.sender?.name}
+                <div style={{ padding: "8px 14px", background: "rgba(20,18,35,0.98)", borderTop: "1px solid rgba(167,139,250,0.2)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  <div style={{ width: 3, alignSelf: 'stretch', background: '#a78bfa', borderRadius: 3, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", marginBottom: 2 }}>
+                      ↩ {replyTo.sender?.name || 'Сообщение'}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "rgba(255,255,255,0.4)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {replyTo.type === "image" ? "📷 Фото" : replyTo.content}
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {replyTo.type === "voice" ? "🎙 Голосовое" : replyTo.type === "image" ? "📷 Фото" : replyTo.content}
                     </div>
                   </div>
-                  <button
-                    onClick={() => setReplyTo(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "rgba(255,255,255,0.4)",
-                      cursor: "pointer",
-                      fontSize: 18,
-                      padding: 4,
-                    }}
-                  >
-                    ×
-                  </button>
+                  <button onClick={() => setReplyTo(null)} style={{ background: "rgba(255,255,255,0.07)", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 16, padding: '4px 8px', borderRadius: 8, flexShrink: 0 }}>✕</button>
                 </div>
               )}
               {emojiPickerOpen && (

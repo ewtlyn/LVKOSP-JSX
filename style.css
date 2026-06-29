@@ -659,38 +659,44 @@ body {
 
 .msgBubble {
   max-width: 70%;
-  padding: 12px 16px;
+  padding: 9px 13px 7px;
   border-radius: 18px;
-  font-size: 15px;
+  font-size: 14.5px;
   line-height: 1.5;
   word-wrap: break-word;
   position: relative;
 }
 
 .msgRow.me .msgBubble {
-  background: rgba(35, 34, 34, 0.9);
+  background: #2a2250;
   color: white;
   border-bottom-right-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
 }
 
 .msgRow.them .msgBubble {
-  background: rgba(45, 45, 45, 0.9);
+  background: rgba(50, 50, 60, 0.95);
   color: white;
   border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
 }
 
 .msgSender {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  margin-bottom: 4px;
-  font-weight: 500;
+  font-weight: 700;
+  margin-bottom: 3px;
 }
 
 .message-time {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-  margin-top: 4px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 3px;
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  line-height: 1;
 }
 
 .chatComposer {

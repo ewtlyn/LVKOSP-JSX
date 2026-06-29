@@ -2171,7 +2171,7 @@ function ProfileWall({
     </div>
   );
 }
-function SettingsPanel({ user, onUserUpdate, onLogout, bubbleThemeId, onBubbleTheme, accentThemeId, onAccentTheme }) {
+function SettingsPanel({ user, onUserUpdate, onLogout, bubbleThemeId, onBubbleTheme, accentThemeId, onAccentTheme, customMeColor, customThemColor, onCustomBubble }) {
   const [isPrivate, setIsPrivate] = useState(user?.is_private || false);
 
   const [oldPwd, setOldPwd] = useState("");
@@ -2328,17 +2328,40 @@ function SettingsPanel({ user, onUserUpdate, onLogout, bubbleThemeId, onBubbleTh
           ))}
         </div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>Цвет сообщений</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
           {BUBBLE_THEMES.map(t => (
-            <button key={t.id} onClick={() => { applyBubbleTheme(t.id); onBubbleTheme?.(t.id); }}
-              style={{ border: bubbleThemeId === t.id ? '2px solid var(--accent)' : '2px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 6, background: 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch' }}>
+            <button key={t.id} onClick={() => { onBubbleTheme?.(t.id); }}
+              style={{ border: bubbleThemeId === t.id && !customMeColor && !customThemColor ? '2px solid var(--accent)' : '2px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 6, background: 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <div style={{ height: 18, borderRadius: 6, background: t.me, alignSelf: 'flex-end', width: '75%' }} />
                 <div style={{ height: 14, borderRadius: 6, background: t.them, alignSelf: 'flex-start', width: '65%' }} />
               </div>
-              <div style={{ fontSize: 10, color: bubbleThemeId === t.id ? 'var(--accent)' : 'rgba(255,255,255,0.4)', fontWeight: bubbleThemeId === t.id ? 700 : 400, textAlign: 'center' }}>{t.label}</div>
+              <div style={{ fontSize: 10, color: bubbleThemeId === t.id && !customMeColor && !customThemColor ? 'var(--accent)' : 'rgba(255,255,255,0.4)', fontWeight: bubbleThemeId === t.id ? 700 : 400, textAlign: 'center' }}>{t.label}</div>
             </button>
           ))}
+        </div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>Свой цвет</div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {[['me','Мои'], ['them','Чужие']].map(([which, label]) => {
+            const current = which === 'me' ? customMeColor : customThemColor;
+            const fallback = which === 'me' ? (BUBBLE_THEMES.find(t=>t.id===bubbleThemeId)||BUBBLE_THEMES[0]).me : (BUBBLE_THEMES.find(t=>t.id===bubbleThemeId)||BUBBLE_THEMES[0]).them;
+            return (
+              <div key={which} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{label}</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: current || fallback, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
+                  <label style={{ flex: 1, position: 'relative', cursor: 'pointer' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '5px 8px', fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>🎨 Выбрать</div>
+                    <input type="color" defaultValue={current || '#2a2250'} style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                      onChange={e => onCustomBubble?.(which, e.target.value)} />
+                  </label>
+                  {current && (
+                    <button onClick={() => onCustomBubble?.(which, '')} style={{ background: 'none', border: 'none', color: 'rgba(255,80,80,0.7)', cursor: 'pointer', fontSize: 14, padding: '4px', flexShrink: 0 }} title="Сбросить">✕</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -4207,9 +4230,23 @@ const BUBBLE_THEMES = [
 
 function applyBubbleTheme(id) {
   const t = BUBBLE_THEMES.find(t => t.id === id) || BUBBLE_THEMES[0];
-  document.documentElement.style.setProperty('--bubble-me', t.me);
-  document.documentElement.style.setProperty('--bubble-them', t.them);
+  const customMe = localStorage.getItem('lvkosp_bubble_me');
+  const customThem = localStorage.getItem('lvkosp_bubble_them');
+  document.documentElement.style.setProperty('--bubble-me', customMe || t.me);
+  document.documentElement.style.setProperty('--bubble-them', customThem || t.them);
   localStorage.setItem('lvkosp_bubble_theme', id);
+}
+
+function applyCustomBubbleColor(which, color) {
+  if (color) {
+    localStorage.setItem(`lvkosp_bubble_${which}`, color);
+    document.documentElement.style.setProperty(`--bubble-${which}`, color);
+  } else {
+    localStorage.removeItem(`lvkosp_bubble_${which}`);
+    const id = localStorage.getItem('lvkosp_bubble_theme') || 'default';
+    const t = BUBBLE_THEMES.find(t => t.id === id) || BUBBLE_THEMES[0];
+    document.documentElement.style.setProperty(`--bubble-${which}`, which === 'me' ? t.me : t.them);
+  }
 }
 
 const WALLPAPERS = [
@@ -4233,6 +4270,8 @@ export default function App() {
     applyBubbleTheme(saved);
     return saved;
   });
+  const [customMeColor, setCustomMeColor] = useState(() => localStorage.getItem('lvkosp_bubble_me') || '');
+  const [customThemColor, setCustomThemColor] = useState(() => localStorage.getItem('lvkosp_bubble_them') || '');
   const [accentThemeId, setAccentThemeId] = useState(() => {
     const saved = localStorage.getItem('lvkosp_accent_theme') || 'violet';
     applyAccentTheme(saved);
@@ -6353,7 +6392,12 @@ export default function App() {
               className="view-content"
               style={{ overflowY: "auto", padding: 20 }}
             >
-              <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={doLogout} bubbleThemeId={bubbleThemeId} onBubbleTheme={id => setBubbleThemeId(id)} accentThemeId={accentThemeId} onAccentTheme={id => { applyAccentTheme(id); setAccentThemeId(id); }} />
+              <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={doLogout}
+                bubbleThemeId={bubbleThemeId} onBubbleTheme={id => { applyBubbleTheme(id); setBubbleThemeId(id); }}
+                accentThemeId={accentThemeId} onAccentTheme={id => { applyAccentTheme(id); setAccentThemeId(id); }}
+                customMeColor={customMeColor} customThemColor={customThemColor}
+                onCustomBubble={(which, color) => { applyCustomBubbleColor(which, color); which === 'me' ? setCustomMeColor(color) : setCustomThemColor(color); }}
+              />
               {user?.is_admin && (
                 <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>ПОДАРКИ</div>

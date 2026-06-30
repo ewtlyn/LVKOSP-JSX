@@ -1471,6 +1471,7 @@ function ProfileWall({
   const [localAvatarUrl, setLocalAvatarUrl] = useState(
     profileUser?.avatar_url || "",
   );
+  const [cropFile, setCropFile] = useState(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [editName, setEditName] = useState(profileUser?.name || '');
   const [editUsername, setEditUsername] = useState(profileUser?.username || '');
@@ -1636,8 +1637,13 @@ function ProfileWall({
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
+    setCropFile(file);
+  }
+
+  async function uploadCroppedAvatar(blob) {
     setAvatarUploading(true);
-    const res = await authService.updateAvatar(currentUser.id, file);
+    const croppedFile = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+    const res = await authService.updateAvatar(currentUser.id, croppedFile);
     setAvatarUploading(false);
     if (!res.success) {
       notificationService.showNotification("Ошибка", res.error, "error");
@@ -1686,6 +1692,14 @@ function ProfileWall({
 
   return (
     <div>
+      {cropFile && (
+        <ImageCropper
+          file={cropFile}
+          onDone={(url, blob) => { setCropFile(null); uploadCroppedAvatar(blob); }}
+          onCancel={() => setCropFile(null)}
+          circular={true}
+        />
+      )}
       <div
         style={{
           background: "rgba(255,255,255,0.03)",
@@ -3891,6 +3905,7 @@ function MessageBubble({
   onMentionClick,
   onPin,
   isPinned,
+  onLongPress,
 }) {
   const [hover, setHover] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -3900,13 +3915,19 @@ function MessageBubble({
   const [swipeX, setSwipeX] = useState(0);
   const touchStartX = useRef(0);
   const swipeTriggered = useRef(false);
+  const longPressTimer = useRef(null);
 
   function onTouchStart(e) {
     touchStartX.current = e.touches[0].clientX;
     swipeTriggered.current = false;
+    longPressTimer.current = setTimeout(() => {
+      if (navigator.vibrate) navigator.vibrate(25);
+      onLongPress?.(msg);
+    }, 500);
   }
   function onTouchMove(e) {
     const dx = e.touches[0].clientX - touchStartX.current;
+    if (Math.abs(dx) > 8) clearTimeout(longPressTimer.current);
     if (isMe) {
       if (dx < 0 && dx > -70) setSwipeX(dx);
     } else {
@@ -3914,6 +3935,7 @@ function MessageBubble({
     }
   }
   function onTouchEnd() {
+    clearTimeout(longPressTimer.current);
     const abs = Math.abs(swipeX);
     if (abs > 50 && !swipeTriggered.current) {
       swipeTriggered.current = true;
@@ -4275,6 +4297,113 @@ const WALLPAPERS = [
   { id: 'teal', label: 'Бирюза', bg: 'linear-gradient(135deg,#001f1f 0%,#003333 100%)' },
 ]
 
+// ─── ImageCropper ──────────────────────────────────────────────────────────
+function ImageCropper({ file, onDone, onCancel, circular = true }) {
+  const canvasRef = useRef(null);
+  const [imgEl, setImgEl] = useState(null);
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef(null);
+  const SIZE = 300;
+
+  useEffect(() => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new window.Image();
+      img.onload = () => setImgEl(img);
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }, [file]);
+
+  useEffect(() => {
+    if (!imgEl || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    ctx.save();
+    if (circular) {
+      ctx.beginPath();
+      ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
+      ctx.clip();
+    }
+    const s = scale;
+    const iw = imgEl.width * s;
+    const ih = imgEl.height * s;
+    ctx.drawImage(imgEl, SIZE / 2 - iw / 2 + offset.x, SIZE / 2 - ih / 2 + offset.y, iw, ih);
+    ctx.restore();
+    if (circular) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.rect(0, 0, SIZE, SIZE);
+      ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2, true);
+      ctx.fill();
+      ctx.restore();
+    }
+  }, [imgEl, scale, offset, circular]);
+
+  function onMouseDown(e) {
+    dragRef.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
+  }
+  function onMouseMove(e) {
+    if (!dragRef.current) return;
+    setOffset({ x: e.clientX - dragRef.current.x, y: e.clientY - dragRef.current.y });
+  }
+  function onMouseUp() { dragRef.current = null; }
+
+  function onTouchStartCrop(e) {
+    dragRef.current = { x: e.touches[0].clientX - offset.x, y: e.touches[0].clientY - offset.y };
+  }
+  function onTouchMoveCrop(e) {
+    if (!dragRef.current) return;
+    e.preventDefault();
+    setOffset({ x: e.touches[0].clientX - dragRef.current.x, y: e.touches[0].clientY - dragRef.current.y });
+  }
+
+  function confirm() {
+    if (!canvasRef.current) return;
+    canvasRef.current.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      onDone(url, blob);
+    }, 'image/jpeg', 0.92);
+  }
+
+  if (!imgEl) return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: 'white', fontSize: 16 }}>Загрузка...</div>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+      <div style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>Обрезать фото</div>
+      <div style={{ position: 'relative', borderRadius: circular ? '50%' : 12, overflow: 'hidden', boxShadow: '0 0 0 2px var(--accent)' }}>
+        <canvas ref={canvasRef} width={SIZE} height={SIZE}
+          style={{ display: 'block', touchAction: 'none', cursor: 'grab' }}
+          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+          onTouchStart={onTouchStartCrop} onTouchMove={onTouchMoveCrop} onTouchEnd={() => { dragRef.current = null; }} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: 300 }}>
+        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Масштаб</div>
+        <input type="range" min="0.3" max="4" step="0.01" value={scale}
+          onChange={e => setScale(Number(e.target.value))}
+          style={{ width: '100%', accentColor: 'var(--accent)' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button onClick={onCancel}
+          style={{ padding: '10px 24px', borderRadius: 12, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+          Отмена
+        </button>
+        <button onClick={confirm}
+          style={{ padding: '10px 24px', borderRadius: 12, background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+          Готово
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────
 export default function App() {
   // аутф
@@ -4328,6 +4457,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
   const chatBodyRef = useRef(null);
+  const backSwipeRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -4395,6 +4525,8 @@ export default function App() {
   // поиск по сообщениям
   const [msgSearchOpen, setMsgSearchOpen] = useState(false);
   const [msgSearchQuery, setMsgSearchQuery] = useState("");
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [msgSheet, setMsgSheet] = useState(null);
 
   // друзья
   const [friends, setFriends] = useState([]);
@@ -4612,6 +4744,7 @@ export default function App() {
   // загрузка сообщений при смене чата
   useEffect(() => {
     if (!user?.id || !activeChatId) return;
+    shouldScrollRef.current = true;
     let alive = true;
     setMessages([]);
     setMsgSearchQuery("");
@@ -4673,13 +4806,19 @@ export default function App() {
     };
   }, [friendsSearch, activeTab, user?.id]);
 
+  const shouldScrollRef = useRef(true);
   function scrollToBottom() {
-    requestAnimationFrame(() => {
-      if (chatBodyRef.current) {
-        chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight + 9999;
-      }
-    });
+    shouldScrollRef.current = true;
   }
+
+  useEffect(() => {
+    if (!shouldScrollRef.current || !messages.length || !chatBodyRef.current) return;
+    const el = chatBodyRef.current;
+    requestAnimationFrame(() => {
+      if (el) el.scrollTop = el.scrollHeight + 9999;
+      shouldScrollRef.current = false;
+    });
+  }, [messages]);
 
   async function handleSend() {
     if (!user?.id || !activeChatId || !messageText.trim()) return;
@@ -5152,6 +5291,18 @@ export default function App() {
           {/* ── ЧАТЫ ── */}
           <section
             className={`view ${activeTab === "chats" ? "is-active" : ""}`}
+            onTouchStart={e => {
+              if (activeChatId && e.touches[0].clientX < 30) {
+                backSwipeRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+              }
+            }}
+            onTouchEnd={e => {
+              if (!backSwipeRef.current || !activeChatId) { backSwipeRef.current = null; return; }
+              const dx = e.changedTouches[0].clientX - backSwipeRef.current.x;
+              const dy = Math.abs(e.changedTouches[0].clientY - backSwipeRef.current.y);
+              if (dx > 60 && dy < 80) setActiveChatId(null);
+              backSwipeRef.current = null;
+            }}
           >
             <div
               style={{
@@ -5245,107 +5396,63 @@ export default function App() {
                 <div className="chatHeader__right">
                   {activeChat && (
                     <>
-                      {activeChat.isGroup && (
-                        <button className="iconBtn" title="Настройки группы"
-                          style={{ color: groupSettingsOpen ? 'var(--accent)' : undefined }}
-                          onClick={() => setGroupSettingsOpen(v => !v)}>
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="1.6"/></svg>
-                        </button>
-                      )}
-                      <button className="iconBtn" title="Обои чата"
-                        style={{ color: chatWallpaper ? 'rgba(167,139,250,0.9)' : undefined }}
-                        onClick={() => setWallpaperPickerOpen(v => !v)}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><path d="m3 15 5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </button>
-                      <button
-                        className="iconBtn"
-                        title="Поиск по сообщениям"
+                      <button className="iconBtn" title="Поиск по сообщениям"
                         style={{ color: msgSearchOpen ? "white" : undefined }}
-                        onClick={() => {
-                          setMsgSearchOpen((v) => !v);
-                          setMsgSearchQuery("");
-                        }}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <path
-                            d="M10.5 18.5a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                          />
-                          <path
-                            d="M16.5 16.5 21 21"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                          />
+                        onClick={() => { setMsgSearchOpen(v => !v); setMsgSearchQuery(""); }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M10.5 18.5a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="1.6"/>
+                          <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
                         </svg>
                       </button>
-                      <button
-                        className="iconBtn"
-                        title="Удалить переписку"
-                        style={{ color: "rgba(255,80,80,0.7)" }}
-                        onClick={() => handleDeleteChat(activeChat.id)}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <polyline
-                            points="3 6 5 6 21 6"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                          />
-                          <path
-                            d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                          />
-                          <path
-                            d="M10 11v6M14 11v6"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                          />
-                          <path
-                            d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </button>
-                      <button className="iconBtn" title={activeChat?.pinned ? 'Открепить' : 'Закрепить'}
-                        style={{ color: activeChat?.pinned ? '#f59e0b' : 'rgba(255,255,255,0.45)' }}
-                        onClick={async () => {
-                          if (!activeChatId || !user?.id) return
-                          const wasPinned = activeChat?.pinned
-                          try { await supabase.from('chat_members').update({ pinned: !wasPinned }).eq('chat_id', activeChatId).eq('user_id', user.id) } catch {}
-                          setChats(prev => {
-                            const updated = prev.map(c => c.id === activeChatId ? { ...c, pinned: !wasPinned } : c)
-                            return [...updated.filter(c => c.pinned), ...updated.filter(c => !c.pinned)]
-                          })
-                        }}>
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill={activeChat?.pinned ? 'currentColor' : 'none'}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
-                      </button>
-                      <button className="iconBtn" title={activeChat?.archived ? 'Из архива' : 'В архив'}
-                        style={{ color: activeChat?.archived ? 'var(--accent)' : 'rgba(255,255,255,0.45)' }}
-                        onClick={async () => {
-                          if (!activeChatId || !user?.id) return
-                          const wasArchived = activeChat?.archived
-                          await chatService.setArchived(activeChatId, user.id, !wasArchived)
-                          setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, archived: !wasArchived } : c))
-                        }}>
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><line x1="12" y1="12" x2="12" y2="17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M9 14l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-                      </button>
+                      <div style={{ position: 'relative' }}>
+                        <button className="iconBtn" onClick={() => setChatMenuOpen(v => !v)}
+                          style={{ color: chatMenuOpen ? 'var(--accent)' : undefined }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+                          </svg>
+                        </button>
+                        {chatMenuOpen && (
+                          <div onClick={() => setChatMenuOpen(false)}
+                            style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, overflow: 'hidden', minWidth: 200, zIndex: 300, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                            {activeChat.isGroup && (
+                              <button onClick={() => setGroupSettingsOpen(v => !v)}
+                                style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" strokeWidth="1.6"/></svg>
+                                Настройки группы
+                              </button>
+                            )}
+                            <button onClick={() => setWallpaperPickerOpen(v => !v)}
+                              style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><path d="m3 15 5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              Обои чата
+                            </button>
+                            <button onClick={async () => {
+                              if (!activeChatId || !user?.id) return;
+                              const wasPinned = activeChat?.pinned;
+                              try { await supabase.from('chat_members').update({ pinned: !wasPinned }).eq('chat_id', activeChatId).eq('user_id', user.id) } catch {}
+                              setChats(prev => { const u = prev.map(c => c.id === activeChatId ? { ...c, pinned: !wasPinned } : c); return [...u.filter(c => c.pinned), ...u.filter(c => !c.pinned)]; });
+                            }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: activeChat?.pinned ? '#f59e0b' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill={activeChat?.pinned ? 'currentColor' : 'none'}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
+                              {activeChat?.pinned ? 'Открепить' : 'Закрепить'}
+                            </button>
+                            <button onClick={async () => {
+                              if (!activeChatId || !user?.id) return;
+                              const wasArchived = activeChat?.archived;
+                              await chatService.setArchived(activeChatId, user.id, !wasArchived);
+                              setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, archived: !wasArchived } : c));
+                            }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: activeChat?.archived ? 'var(--accent)' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><line x1="12" y1="12" x2="12" y2="17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M9 14l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                              {activeChat?.archived ? 'Убрать из архива' : 'В архив'}
+                            </button>
+                            <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '0 12px' }}/>
+                            <button onClick={() => handleDeleteChat(activeChat.id)}
+                              style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'rgba(255,80,80,0.9)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                              Удалить переписку
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
@@ -5551,6 +5658,7 @@ export default function App() {
                             onMentionClick={handleMentionClick}
                             onPin={handlePinMessage}
                             isPinned={pinnedMsg?.id === msg.id}
+                            onLongPress={(m) => setMsgSheet(m)}
                           />
                         </React.Fragment>
                       );
@@ -6103,41 +6211,42 @@ export default function App() {
               )}
             </div>
             {viewingUser && (
-              <div style={{ padding: "10px 16px 0", display: "flex", gap: 8, flexShrink: 0, alignItems: 'center' }}>
-                <button onClick={() => startChatWith(viewingUser)}
-                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 12, padding: '9px 16px', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
-                  Написать
-                </button>
+              <div style={{ padding: "10px 16px 0", display: "flex", gap: 8, flexShrink: 0, alignItems: 'center', justifyContent: 'flex-end' }}>
                 <div style={{ position: 'relative' }}>
                   <button onClick={() => setViewingUserMenuOpen(v => !v)}
-                    style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, letterSpacing: 2 }}>
-                    ···
+                    style={{ width: 36, height: 36, borderRadius: '50%', background: 'none', border: '1.5px solid rgba(255,255,255,0.25)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
                   </button>
                   {viewingUserMenuOpen && (
                     <div onMouseLeave={() => setViewingUserMenuOpen(false)}
-                      style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, overflow: 'hidden', minWidth: 180, zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                      style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, overflow: 'hidden', minWidth: 200, zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                      <button onClick={() => { setViewingUserMenuOpen(false); startChatWith(viewingUser); }}
+                        style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
+                        Написать
+                      </button>
+                      <button onClick={() => { setViewingUserMenuOpen(false); setGiftTarget(viewingUser); }}
+                        style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: '#f9ca24', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 12v10H4V12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 7H2v5h20V7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 22V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        Подарить
+                      </button>
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '0 12px' }} />
                       <button onClick={async () => {
                         setViewingUserMenuOpen(false);
                         if (!await showConfirm(`${viewingUser.name} не сможет видеть ваши посты и писать вам.`, `Заблокировать ${viewingUser.name}?`)) return;
                         const res = await blocksService.block(user.id, viewingUser.id);
                         if (res.success) { notificationService.showNotification('Готово', `${viewingUser.name} заблокирован`, 'success'); setViewingUser(null); }
                         else notificationService.showNotification('Ошибка', res.error, 'error');
-                      }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'rgba(255,100,100,0.9)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}
-                        onMouseEnter={e => e.currentTarget.style.background='rgba(255,80,80,0.08)'}
-                        onMouseLeave={e => e.currentTarget.style.background='none'}>
+                      }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'rgba(255,100,100,0.9)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" stroke="currentColor" strokeWidth="1.7"/></svg>
                         Заблокировать
                       </button>
-                      <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '0 12px' }} />
                       <button onClick={async () => {
                         setViewingUserMenuOpen(false);
                         if (!await showConfirm(`Отправить жалобу на ${viewingUser.name}?`, 'Пожаловаться')) return;
                         supabase.from('reports').insert({ from_user_id: user.id, on_user_id: viewingUser.id, reason: 'user_report' }).then(() => {});
                         notificationService.showNotification('Жалоба отправлена', 'Мы рассмотрим её в ближайшее время', 'success');
-                      }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'rgba(255,180,0,0.9)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}
-                        onMouseEnter={e => e.currentTarget.style.background='rgba(255,180,0,0.07)'}
-                        onMouseLeave={e => e.currentTarget.style.background='none'}>
+                      }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'rgba(255,180,0,0.9)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="currentColor" strokeWidth="1.5"/></svg>
                         Пожаловаться
                       </button>
@@ -6234,6 +6343,64 @@ export default function App() {
             </div>
           </section>
         </main>
+
+        {/* ════ MSG SHEET ════ */}
+        {msgSheet && (() => {
+          const isMe = msgSheet.sender_id === user?.id;
+          const rxGroups = (msgSheet._reactions || []).reduce((acc, r) => {
+            if (!acc[r.emoji]) acc[r.emoji] = { count: 0, mine: false };
+            acc[r.emoji].count++;
+            if (r.user_id === user?.id) acc[r.emoji].mine = true;
+            return acc;
+          }, {});
+          const QUICK_EMOJIS = ['❤️','😂','😮','😢','🔥','👍'];
+          async function sheetReact(emoji) {
+            const already = rxGroups[emoji]?.mine;
+            if (already) {
+              await supabase.from('msg_reactions').delete().eq('message_id', msgSheet.id).eq('user_id', user.id).eq('emoji', emoji);
+            } else {
+              await supabase.from('msg_reactions').insert({ message_id: msgSheet.id, user_id: user.id, emoji });
+            }
+            setMessages(prev => prev.map(m => {
+              if (m.id !== msgSheet.id) return m;
+              const reactions = already
+                ? (m._reactions || []).filter(r => !(r.user_id === user.id && r.emoji === emoji))
+                : [...(m._reactions || []), { user_id: user.id, emoji, id: Math.random() }];
+              return { ...m, _reactions: reactions };
+            }));
+            setMsgSheet(null);
+          }
+          return (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 9600, background: 'rgba(0,0,0,0.55)' }} onClick={() => setMsgSheet(null)}>
+              <div onClick={e => e.stopPropagation()}
+                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: '#111118', borderRadius: '20px 20px 0 0', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-around', padding: '16px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                  {QUICK_EMOJIS.map(e => (
+                    <button key={e} onClick={() => sheetReact(e)}
+                      style={{ background: rxGroups[e]?.mine ? 'rgba(255,255,255,0.15)' : 'none', border: rxGroups[e]?.mine ? '1px solid rgba(255,255,255,0.2)' : '1px solid transparent', borderRadius: 20, padding: '6px 10px', fontSize: 22, cursor: 'pointer', transition: 'background 0.1s' }}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
+                {[
+                  { label: 'Ответить', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 10H5l7-7 7 7h-4v4a7 7 0 0 1-7 7H5a9 9 0 0 0 4-7v-4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>, action: () => { setReplyTo(msgSheet); setMsgSheet(null); } },
+                  ...(msgSheet.content || msgSheet.media_url ? [{ label: 'Переслать', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 10h4l-7-7-7 7h4v4a7 7 0 0 0 7 7h3a9 9 0 0 1-4-7v-4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>, action: () => { setForwardMsg(msgSheet); setMsgSheet(null); } }] : []),
+                  ...(isMe ? [{ label: 'Изменить', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>, action: () => { setMsgSheet(null); } }] : []),
+                  { label: 'Копировать', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>, action: () => { if (msgSheet.content) navigator.clipboard?.writeText(msgSheet.content).catch(() => {}); setMsgSheet(null); } },
+                  ...(isMe ? [
+                    { label: 'Удалить у себя', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>, action: () => { handleDeleteMessage(msgSheet.id); setMsgSheet(null); }, danger: true },
+                    { label: 'Удалить у всех', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>, action: () => { handleDeleteForAll(msgSheet.id); setMsgSheet(null); }, danger: true },
+                  ] : []),
+                ].map(({ label, icon, action, danger }) => (
+                  <button key={label} onClick={action}
+                    style={{ width: '100%', background: 'none', border: 'none', padding: '14px 20px', color: danger ? 'rgba(255,80,80,0.9)' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14, fontSize: 15, textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    {icon}{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ════ BOTTOM NAV ════ */}
         {user && !(activeTab === 'chats' && activeChatId) && (

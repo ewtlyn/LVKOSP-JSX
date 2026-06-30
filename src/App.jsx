@@ -1800,24 +1800,6 @@ function ProfileWall({
                 </div>
               )}
             </div>
-            {!isMe && currentUser?.id && (
-              <div style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                {following !== null && (
-                  <button onClick={handleFollow} disabled={followLoading}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: following ? 'rgba(255,255,255,0.06)' : 'var(--accent)', border: `1px solid ${following ? 'rgba(255,255,255,0.15)' : 'transparent'}`, color: 'white', borderRadius: 12, padding: '8px 16px', cursor: 'pointer', fontWeight: 600, fontSize: 13, opacity: followLoading ? 0.6 : 1 }}>
-                    {following
-                      ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>Отписаться</>
-                      : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Подписаться</>
-                    }
-                  </button>
-                )}
-                <button onClick={() => onGiftClick?.(profileUser)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(249,202,36,0.1)', border: '1px solid rgba(249,202,36,0.25)', color: '#f9ca24', borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 12v10H4V12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 7H2v5h20V7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 22V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Подарить
-                </button>
-              </div>
-            )}
           </div>
           <div style={{ marginTop: 10 }}>
             {editingProfile ? (
@@ -1923,8 +1905,14 @@ function ProfileWall({
                     </button>
                   )}
                 </div>
-                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
-                  @{profileUser?.username}
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span>@{profileUser?.username}</span>
+                  {!isMe && currentUser?.id && following !== null && (
+                    <button onClick={handleFollow} disabled={followLoading}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, background: following ? 'rgba(255,255,255,0.07)' : 'var(--accent)', border: `1px solid ${following ? 'rgba(255,255,255,0.12)' : 'transparent'}`, color: 'white', borderRadius: 20, padding: '4px 14px', cursor: 'pointer', fontWeight: 700, fontSize: 12, opacity: followLoading ? 0.6 : 1, flexShrink: 0 }}>
+                      {following ? 'Отписаться' : 'Подписаться'}
+                    </button>
+                  )}
                 </div>
                 {profileUser?.bio && (
                   <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", lineHeight: 1.5, marginBottom: 8 }}>
@@ -5263,7 +5251,7 @@ export default function App() {
           onClick={() => setFocusPost(null)}>
           <div style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '0 4px' }}>
-              <button onClick={() => setFocusPost(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>←</button>
+              <button onClick={() => setFocusPost(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 28, lineHeight: 1 }}>‹</button>
               <span style={{ fontWeight: 700, fontSize: 16 }}>Пост</span>
             </div>
             <PostCard
@@ -5314,8 +5302,8 @@ export default function App() {
               {activeChat && <header className="chatHeader">
                 {activeChat && (
                   <button onClick={() => setActiveChatId(null)}
-                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '0 8px 0 0', fontSize: 20, flexShrink: 0 }}>
-                    ←
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '0 8px 0 0', fontSize: 26, flexShrink: 0, lineHeight: 1 }}>
+                    ‹
                   </button>
                 )}
                 <div
@@ -5568,7 +5556,7 @@ export default function App() {
                         </button>
                         <button onClick={() => setShowArchived(v => !v)}
                           style={{ background: 'none', border: 'none', fontSize: 12, color: showArchived ? 'var(--accent)' : 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '4px 8px', fontWeight: 600 }}>
-                          {showArchived ? '← Назад' : 'Архив'}
+                          {showArchived ? '‹ Назад' : 'Архив'}
                         </button>
                       </div>
                     </div>

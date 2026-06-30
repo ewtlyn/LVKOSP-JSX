@@ -1752,15 +1752,15 @@ function ProfileWall({
             <div style={{ marginTop: -20, position: 'relative', display: 'inline-block' }}>
               {isMe && (
                 <input
+                  ref={avatarFileRef}
                   type="file"
-                  id="avatarFileInput"
                   accept="image/*"
-                  style={{ display: "none" }}
+                  style={{ opacity: 0, position: 'absolute', width: 1, height: 1, overflow: 'hidden' }}
                   onChange={handleAvatarUpload}
                 />
               )}
-              <label
-                htmlFor={isMe ? "avatarFileInput" : undefined}
+              <div
+                onClick={() => isMe && avatarFileRef.current?.click()}
                 style={{ cursor: isMe ? "pointer" : undefined, position: "relative", display: "inline-block" }}
               >
                 <Avatar
@@ -1774,7 +1774,7 @@ function ProfileWall({
                     {avatarUploading ? "…" : "✎"}
                   </div>
                 )}
-              </label>
+              </div>
               {activeGift && (
                 <div style={{ position: 'absolute', bottom: -8, left: 44, zIndex: 10 }}>
                   <GiftBadge
@@ -1787,16 +1787,20 @@ function ProfileWall({
               )}
             </div>
             {!isMe && currentUser?.id && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                 {following !== null && (
                   <button onClick={handleFollow} disabled={followLoading}
-                    style={{ background: following ? "transparent" : "rgba(255,255,255,0.13)", border: `1px solid ${following ? "rgba(255,255,255,0.2)" : "transparent"}`, color: "white", borderRadius: 10, padding: "7px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
-                    {following ? "Отписаться" : "Подписаться"}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: following ? 'rgba(255,255,255,0.06)' : 'var(--accent)', border: `1px solid ${following ? 'rgba(255,255,255,0.15)' : 'transparent'}`, color: 'white', borderRadius: 12, padding: '8px 16px', cursor: 'pointer', fontWeight: 600, fontSize: 13, opacity: followLoading ? 0.6 : 1 }}>
+                    {following
+                      ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>Отписаться</>
+                      : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Подписаться</>
+                    }
                   </button>
                 )}
                 <button onClick={() => onGiftClick?.(profileUser)}
-                  style={{ background: 'rgba(249,202,36,0.12)', border: '1px solid rgba(249,202,36,0.3)', color: '#f9ca24', borderRadius: 10, padding: "7px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
-                  🎁 Подарить
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(249,202,36,0.1)', border: '1px solid rgba(249,202,36,0.25)', color: '#f9ca24', borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 12v10H4V12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 7H2v5h20V7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 22V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Подарить
                 </button>
               </div>
             )}
@@ -2374,8 +2378,8 @@ function SettingsPanel({ user, onUserUpdate, onLogout, bubbleThemeId, onBubbleTh
     </div>
   );
 }
-function ExploreView({ currentUser, onUserClick, onMentionClick, onShareClick, onNotify }) {
-  const [query, setQuery] = useState('')
+function ExploreView({ currentUser, onUserClick, onMentionClick, onShareClick, onNotify, initialQuery = '', initialTab = 'people' }) {
+  const [query, setQuery] = useState(initialQuery)
   const [userResults, setUserResults] = useState([])
   const [postResults, setPostResults] = useState([])
   const [searching, setSearching] = useState(false)
@@ -3795,6 +3799,17 @@ function VoicePlayer({ src, isMe }) {
   const [loadError, setLoadError] = useState(false);
   const [errorDetail, setErrorDetail] = useState('');
 
+  // iOS Safari cannot play webm
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isWebm = src && (src.includes('.webm') || src.includes('audio/webm'));
+  const cantPlay = isSafari && isWebm;
+  if (cantPlay) return (
+    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', padding: '4px 0' }}>
+      Формат не поддерживается Safari.{' '}
+      <a href={src} download style={{ color: 'var(--accent)' }}>Скачать</a>
+    </div>
+  );
+
   function toggle() {
     const a = audioRef.current;
     if (!a) return;
@@ -4278,6 +4293,7 @@ export default function App() {
     return saved;
   });
   const [serverOnline, setServerOnline] = useState(true);
+  const [viewingUserMenuOpen, setViewingUserMenuOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState("login");
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
@@ -4292,10 +4308,15 @@ export default function App() {
   const [registerLoading, setRegisterLoading] = useState(false);
 
   // навигация
-  const [activeTab, setActiveTab] = useState("chats");
+  const [activeTab, setActiveTab] = useState("feed");
   const [feedSubTab, setFeedSubTab] = useState("feed");
   const [viewingChannel, setViewingChannel] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // kept for compat
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notifsOpen, setNotifsOpen] = useState(false);
+  const [feedSearch, setFeedSearch] = useState('');
+  const [feedSearchTab, setFeedSearchTab] = useState('people');
+  const [profileSubView, setProfileSubView] = useState(null); // null | 'friends'
 
   // чаты
   const [chats, setChats] = useState([]);
@@ -4430,7 +4451,12 @@ export default function App() {
     user?.name,
   );
   const [unreadCounts, setUnreadCounts] = useState({});
-  const resetUnread = useCallback((chatId) => setUnreadCounts(prev => ({ ...prev, [chatId]: 0 })), []);
+  const lastReadRef = useRef(JSON.parse(localStorage.getItem('lvkosp_last_read') || '{}'));
+  const resetUnread = useCallback((chatId) => {
+    lastReadRef.current[chatId] = Date.now();
+    localStorage.setItem('lvkosp_last_read', JSON.stringify(lastReadRef.current));
+    setUnreadCounts(prev => ({ ...prev, [chatId]: 0 }));
+  }, []);
 
   const activeChat = useMemo(
     () => chats.find((c) => c.id === activeChatId) || null,
@@ -4524,6 +4550,14 @@ export default function App() {
       setChats(ch);
       setFriends(fr);
       setPendingRequests(reqs);
+      const lr = lastReadRef.current;
+      const counts = {};
+      ch.forEach(c => {
+        if (c.lastMessageTime && (!lr[c.id] || new Date(c.lastMessageTime).getTime() > lr[c.id])) {
+          counts[c.id] = 1;
+        }
+      });
+      setUnreadCounts(counts);
     })();
     const t = setInterval(() => authService.updateOnlineStatus(user.id), 60000);
     if ('serviceWorker' in navigator) {
@@ -4623,7 +4657,7 @@ export default function App() {
 
   // поиск пользователей
   useEffect(() => {
-    if (!user?.id || activeTab !== "friends") return;
+    if (!user?.id || (activeTab !== "friends" && !(activeTab === "profile" && profileSubView === "friends"))) return;
     const q = friendsSearch.trim();
     let cancelled = false;
     (async () => {
@@ -4669,6 +4703,7 @@ export default function App() {
       );
       return;
     }
+    resetUnread(activeChatId);
     setMessages((prev) =>
       prev.find((m) => m.id === res.message.id)
         ? prev
@@ -4855,8 +4890,8 @@ export default function App() {
     if (!userData?.id) return;
     if (userData.id === user?.id) setViewingUser(null);
     else setViewingUser(userData);
+    setProfileSubView(null);
     setActiveTab("profile");
-    setSidebarOpen(false);
   }
 
   async function startChatWith(targetUser) {
@@ -4866,7 +4901,6 @@ export default function App() {
       setChats(updated);
       setActiveChatId(chatId);
       setActiveTab("chats");
-      setSidebarOpen(false);
     } catch (e) {
       notificationService.showNotification(
         "Ошибка",
@@ -5026,10 +5060,10 @@ export default function App() {
         chatService.getChats(user.id).then(setChats).catch(() => {});
       }
     }
-    if (activeTab === "friends") {
+    if (activeTab === "friends" || (activeTab === "profile" && profileSubView === "friends")) {
       setFriendsSearch("");
     }
-  }, [activeTab, user?.id, chats.length]);
+  }, [activeTab, profileSubView, user?.id, chats.length]);
 
   if (!authChecked)
     return <LoadingScreen onRetry={() => { setAuthChecked(false); authService.getCurrentUser().then(res => { if (res.success) { setUser(res.user); setAuthModalOpen(false); } else { setUser(null); setAuthModalOpen(true); } setAuthChecked(true); }) }} />;
@@ -5106,176 +5140,10 @@ export default function App() {
         </div>
       )}
 
-      <div
-        className="app"
-        style={{ display: user ? "grid" : "block", minHeight: "100vh" }}
-      >
-        <button
-          className="mobile-menu-btn"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="Меню"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M4 6h16M4 12h16M4 18h16"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-        <div
-          className="sidebar-overlay"
-          style={{ display: sidebarOpen ? "block" : "none" }}
-          onClick={() => setSidebarOpen(false)}
-        />
+      <div className="app">
 
-        {/* ════ SIDEBAR ════ */}
-        <aside
-          className="sidebar"
-          style={{ transform: sidebarOpen ? "translateX(0)" : undefined }}
-        >
-          <div className="brand">
-            <div className="brand__title">LVKOSP MESSENGER</div>
-          </div>
 
-          <div className="search">
-            <div className="search__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M10.5 18.5a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                />
-                <path
-                  d="M16.5 16.5 21 21"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <input
-              className="search__input"
-              type="search"
-              placeholder="Поиск..."
-              autoComplete="off"
-              value={activeTab === "friends" ? friendsSearch : chatSearch}
-              onChange={(e) => {
-                if (activeTab === "friends") setFriendsSearch(e.target.value);
-                else setChatSearch(e.target.value);
-              }}
-            />
-          </div>
-
-          <nav className="tabs">
-            <button className={`tab ${activeTab === "profile" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("profile"); setViewingUser(null); setSidebarOpen(false) }}>
-              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /></svg></span>
-              <span className="tab__label">Профиль</span>
-            </button>
-            <button className={`tab ${activeTab === "explore" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("explore"); setSidebarOpen(false) }}>
-              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.6"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></span>
-              <span className="tab__label">Поиск</span>
-            </button>
-            <button className={`tab ${activeTab === "chats" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("chats"); setActiveChatId(null); setSidebarOpen(false) }}>
-              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7.5 18.5H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8.5a3 3 0 0 1-3 3h-5.2l-3.6 2.6a.9.9 0 0 1-1.4-.7v-1.9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg></span>
-              <span className="tab__label">Чаты</span>
-              {totalUnread > 0 && <span className="notification-badge">{totalUnread > 99 ? "99+" : totalUnread}</span>}
-            </button>
-            <button className={`tab ${activeTab === "friends" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("friends"); setSidebarOpen(false) }}>
-              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg></span>
-              <span className="tab__label">Друзья</span>
-              {pendingRequests.length > 0 && <span className="notification-badge">{pendingRequests.length}</span>}
-            </button>
-            <button className={`tab ${activeTab === "feed" ? "is-active" : ""}`} type="button"
-              onClick={() => { setActiveTab("feed"); setSidebarOpen(false) }}>
-              <span className="tab__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="10.5" width="18" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="17" width="11" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg></span>
-              <span className="tab__label">Лента</span>
-            </button>
-          </nav>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px 4px' }}>
-            <div className="sectionTitle" style={{ margin: 0 }}>Частые</div>
-          </div>
-
-          <div className="dmList">
-            {chats.filter(c => !c.archived).slice(0, 5).length === 0 ? (
-              <div style={{ padding: 20, textAlign: "center", color: "rgba(255,255,255,0.35)", fontSize: 13 }}>
-                Чатов пока нет
-              </div>
-            ) : (
-              chats.filter(c => !c.archived).slice(0, 5).map((chat) => {
-                const unread = unreadCounts[chat.id] || 0;
-                return (
-                  <div
-                    key={chat.id}
-                    className={`dmItem ${chat.id === activeChatId ? "is-active" : ""}`}
-                    onClick={() => {
-                      setActiveChatId(chat.id);
-                      setActiveTab("chats");
-                      setSidebarOpen(false);
-                    }}
-                  >
-                    <div style={{ position: "relative" }}>
-                      <Avatar url={chat.avatarUrl} name={chat.name} size={44} />
-                      {chat.isGroup
-                        ? <div style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--accent-dark)', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b0b0b' }}>👥</div>
-                        : <div className={chat.status === "online" ? "online-status" : "offline-status"} />
-                      }
-                    </div>
-                    <div className="dmMeta">
-                      <div className="dmName">{safeText(chat.name)}{chat.isGroup && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginLeft: 5 }}>{chat.memberCount} чел.</span>}</div>
-                      <div className="dmSnippet">{safeText(chat.lastMessage || "Нет сообщений")}</div>
-                    </div>
-                    <div className="dmRight">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {chat.pinned && <span style={{ fontSize: 12, color: '#f59e0b' }}>📌</span>}
-                        <div className="dmTime">{formatTime(chat.lastMessageTime)}</div>
-                      </div>
-                      {unread > 0 && (
-                        <div style={{ background: "#ef4444", color: "white", borderRadius: 10, fontSize: 10, fontWeight: 800, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
-                          {unread > 99 ? "99+" : unread}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Me card */}
-          <div className="meCard">
-            <div style={{ position: "relative", flexShrink: 0, cursor: 'pointer' }}
-              onClick={() => { setActiveTab('profile'); setViewingUser(null); setSidebarOpen(false) }}>
-              <Avatar url={user?.avatar_url} name={user?.name} size={40} />
-              <div className="online-status" />
-            </div>
-            <div className="meCard__meta" style={{ cursor: 'pointer' }}
-              onClick={() => { setActiveTab('profile'); setViewingUser(null); setSidebarOpen(false) }}>
-              <div className="meCard__name">{user?.name || "User"}</div>
-              <div className="meCard__user">@{user?.username || "user"}</div>
-            </div>
-            <div style={{ display: 'flex', gap: 2 }}>
-              <button className="iconBtn" type="button" title="Уведомления"
-                style={{ position: 'relative', color: activeTab === 'notifs' ? 'white' : undefined }}
-                onClick={async () => { setActiveTab("notifs"); setSidebarOpen(false); const n = await notificationsService.getUnread(user.id); setDbNotifs(n); notificationsService.markAllRead(user.id); setDbNotifsUnread(0) }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-                {dbNotifsUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0b0b0b' }} />}
-              </button>
-              <button className="iconBtn" type="button" title="Настройки"
-                style={{ color: activeTab === 'settings' ? 'white' : undefined }}
-                onClick={() => { setActiveTab("settings"); setSidebarOpen(false) }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-              </button>
-            </div>
-          </div>
-        </aside>
-
+        {/* sidebar removed */}
         {/* ════ MAIN ════ */}
         <main
           className="main"
@@ -5292,7 +5160,7 @@ export default function App() {
                 height: "100%",
               }}
             >
-              <header className="chatHeader">
+              {activeChat && <header className="chatHeader">
                 {activeChat && (
                   <button onClick={() => setActiveChatId(null)}
                     style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '0 8px 0 0', fontSize: 20, flexShrink: 0 }}>
@@ -5481,7 +5349,7 @@ export default function App() {
                     </>
                   )}
                 </div>
-              </header>
+              </header>}
 
               {/* Поиск по сообщениям */}
               {msgSearchOpen && activeChat && (
@@ -5725,7 +5593,7 @@ export default function App() {
                   ))}
                 </div>
               )}
-              <footer className="chatComposer">
+              {activeChat && <footer className="chatComposer">
                 <div className="composer-actions">
                   <button type="button" className="clipBtn" onClick={() => setEmojiPickerOpen(p => !p)} title="Эмодзи" style={{ opacity: activeChat ? 1 : 0.4 }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><path d="M8.5 14.5c.9 1.5 6.1 1.5 7 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
@@ -5795,16 +5663,23 @@ export default function App() {
                     <path d="M21 3 11.5 13.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
                   </svg>
                 </button>
-              </footer>
+              </footer>}
             </div>
           </section>
 
           {/* ── ДРУЗЬЯ ── */}
           <section
-            className={`view ${activeTab === "friends" ? "is-active" : ""}`}
+            className={`view ${(activeTab === "friends" || (activeTab === "profile" && profileSubView === "friends")) ? "is-active" : ""}`}
           >
             <div className="view-header">
-              <div className="view-header__title">Друзья</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {activeTab === "profile" && profileSubView === "friends" && (
+                  <button onClick={() => setProfileSubView(null)} className="iconBtn" style={{ marginRight: 4 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                )}
+                <div className="view-header__title">Друзья</div>
+              </div>
             </div>
 
             {/* Под-табы */}
@@ -5912,7 +5787,7 @@ export default function App() {
                           key={f.id}
                           className="search-result-item"
                           style={{ justifyContent: "space-between", cursor: 'pointer' }}
-                          onClick={() => { setViewingUser(f); setActiveTab("profile"); setSidebarOpen(false); }}
+                          onClick={() => { setViewingUser(f); setProfileSubView(null); setActiveTab("profile"); }}
                         >
                           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                             <Avatar url={f.avatar_url} name={f.name} size={42} />
@@ -6003,6 +5878,7 @@ export default function App() {
                                 className="btn is-outline"
                                 onClick={() => {
                                   setViewingUser(u);
+                                  setProfileSubView(null);
                                   setActiveTab("profile");
                                 }}
                               >
@@ -6123,8 +5999,39 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <div className="view-content" style={{ overflowY: "auto", padding: 20 }}>
-              {feedSubTab === 'feed' ? (
+            {/* Feed Search Bar */}
+            <div style={{ padding: '0 16px 8px', flexShrink: 0 }}>
+              <div style={{ position: 'relative' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.35)', pointerEvents: 'none' }}>
+                  <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.6"/>
+                  <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+                <input value={feedSearch} onChange={e => setFeedSearch(e.target.value)} placeholder="Поиск людей, постов..."
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '9px 12px 9px 36px', color: 'white', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}/>
+                {feedSearch && <button onClick={() => setFeedSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 2 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                </button>}
+              </div>
+              {feedSearch && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  {[['people','Люди'],['posts','Посты']].map(([id,label]) => (
+                    <button key={id} onClick={() => setFeedSearchTab(id)}
+                      style={{ padding: '5px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                        background: feedSearchTab === id ? 'var(--accent)' : 'rgba(255,255,255,0.07)', color: 'white' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="view-content" style={{ overflowY: "auto", padding: feedSearch ? 0 : 20 }}>
+              {feedSearch ? (
+                <div style={{ padding: '0 0 80px' }}>
+                  <ExploreView currentUser={user} onUserClick={openProfile} onMentionClick={handleMentionClick} onShareClick={setSharePost}
+                    onNotify={(type, toId, entityId, preview) => notificationsService.create(toId, type, user?.id, entityId, preview)}
+                    initialQuery={feedSearch} initialTab={feedSearchTab} />
+                </div>
+              ) : feedSubTab === 'feed' ? (
                 <GlobalFeed
                   currentUser={user}
                   onShareClick={setSharePost}
@@ -6165,92 +6072,78 @@ export default function App() {
             className={`view ${activeTab === "profile" ? "is-active" : ""}`}
           >
             <div className="view-header">
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {viewingUser && (
-                  <button
-                    onClick={() => setViewingUser(null)}
-                    className="iconBtn"
-                    style={{ marginRight: 4 }}
-                  >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {(viewingUser || profileSubView) && (
+                  <button onClick={() => { setViewingUser(null); setProfileSubView(null); }} className="iconBtn" style={{ marginRight: 4 }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M19 12H5M12 5l-7 7 7 7"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                      <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </button>
                 )}
                 <div className="view-header__title">
-                  {viewingUser ? safeText(viewingUser.name) : "Мой профиль"}
+                  {viewingUser ? safeText(viewingUser.name) : profileSubView === 'friends' ? 'Друзья' : 'Профиль'}
                 </div>
               </div>
-              {!viewingUser && (
-                <button className="iconBtn" title="Уведомления" style={{ position: 'relative', color: activeTab === 'notifs' ? 'white' : undefined }}
-                  onClick={async () => { setActiveTab("notifs"); setSidebarOpen(false); const n = await notificationsService.getUnread(user.id); setDbNotifs(n); notificationsService.markAllRead(user.id); setDbNotifsUnread(0) }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-                  {dbNotifsUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0b0b0b' }} />}
-                </button>
+              {!viewingUser && !profileSubView && (
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button className="iconBtn" style={{ position: 'relative' }} onClick={async () => {
+                    setNotifsOpen(true);
+                    const n = await notificationsService.getUnread(user.id);
+                    setDbNotifs(n);
+                    notificationsService.markAllRead(user.id);
+                    setDbNotifsUnread(0);
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                    {dbNotifsUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0b0b0b' }}/>}
+                  </button>
+                  <button className="iconBtn" onClick={() => setSettingsOpen(true)}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  </button>
+                </div>
               )}
             </div>
             {viewingUser && (
-              <div
-                style={{
-                  padding: "12px 20px 0",
-                  display: "flex",
-                  gap: 10,
-                  flexShrink: 0,
-                }}
-              >
-                <button
-                  className="btn is-outline"
-                  onClick={() => startChatWith(viewingUser)}
-                >
+              <div style={{ padding: "10px 16px 0", display: "flex", gap: 8, flexShrink: 0, alignItems: 'center' }}>
+                <button onClick={() => startChatWith(viewingUser)}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 12, padding: '9px 16px', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
                   Написать
                 </button>
-                <button
-                  className="btn is-outline"
-                  style={{
-                    color: "rgba(255,100,100,0.8)",
-                    borderColor: "rgba(255,100,100,0.3)",
-                  }}
-                  onClick={async () => {
-                    if (!await showConfirm(`${viewingUser.name} не сможет видеть ваши посты и писать вам.`, `Заблокировать ${viewingUser.name}?`))
-                      return;
-                    const res = await blocksService.block(
-                      user.id,
-                      viewingUser.id,
-                    );
-                    if (res.success) {
-                      notificationService.showNotification(
-                        "Готово",
-                        `${viewingUser.name} заблокирован`,
-                        "success",
-                      );
-                      setViewingUser(null);
-                    } else
-                      notificationService.showNotification(
-                        "Ошибка",
-                        res.error,
-                        "error",
-                      );
-                  }}
-                >
-                  Заблокировать
-                </button>
-                <button
-                  className="btn is-outline"
-                  style={{ fontSize: 13, padding: '7px 14px', color: 'rgba(255,180,0,0.8)', borderColor: 'rgba(255,180,0,0.3)' }}
-                  onClick={async () => {
-                    if (!await showConfirm(`Отправить жалобу на ${viewingUser.name}?`, 'Пожаловаться')) return;
-                    supabase.from('reports').insert({ from_user_id: user.id, on_user_id: viewingUser.id, reason: 'user_report' }).then(() => {});
-                    notificationService.showNotification('Жалоба отправлена', 'Мы рассмотрим её в ближайшее время', 'success');
-                  }}
-                >
-                  Пожаловаться
-                </button>
+                <div style={{ position: 'relative' }}>
+                  <button onClick={() => setViewingUserMenuOpen(v => !v)}
+                    style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, letterSpacing: 2 }}>
+                    ···
+                  </button>
+                  {viewingUserMenuOpen && (
+                    <div onMouseLeave={() => setViewingUserMenuOpen(false)}
+                      style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, overflow: 'hidden', minWidth: 180, zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                      <button onClick={async () => {
+                        setViewingUserMenuOpen(false);
+                        if (!await showConfirm(`${viewingUser.name} не сможет видеть ваши посты и писать вам.`, `Заблокировать ${viewingUser.name}?`)) return;
+                        const res = await blocksService.block(user.id, viewingUser.id);
+                        if (res.success) { notificationService.showNotification('Готово', `${viewingUser.name} заблокирован`, 'success'); setViewingUser(null); }
+                        else notificationService.showNotification('Ошибка', res.error, 'error');
+                      }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'rgba(255,100,100,0.9)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background='rgba(255,80,80,0.08)'}
+                        onMouseLeave={e => e.currentTarget.style.background='none'}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" stroke="currentColor" strokeWidth="1.7"/></svg>
+                        Заблокировать
+                      </button>
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '0 12px' }} />
+                      <button onClick={async () => {
+                        setViewingUserMenuOpen(false);
+                        if (!await showConfirm(`Отправить жалобу на ${viewingUser.name}?`, 'Пожаловаться')) return;
+                        supabase.from('reports').insert({ from_user_id: user.id, on_user_id: viewingUser.id, reason: 'user_report' }).then(() => {});
+                        notificationService.showNotification('Жалоба отправлена', 'Мы рассмотрим её в ближайшее время', 'success');
+                      }} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', color: 'rgba(255,180,0,0.9)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background='rgba(255,180,0,0.07)'}
+                        onMouseLeave={e => e.currentTarget.style.background='none'}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="currentColor" strokeWidth="1.5"/></svg>
+                        Пожаловаться
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             <div
@@ -6262,21 +6155,11 @@ export default function App() {
                 currentUser={user}
                 isFriendOfUser={isFriend(profileUser?.id)}
                 onShareClick={setSharePost}
-                onBannerUpdate={(url) =>
-                  setUser((prev) => ({ ...prev, banner_url: url }))
-                }
+                onBannerUpdate={(url) => setUser((prev) => ({ ...prev, banner_url: url }))}
                 onUserClick={openProfile}
                 onMentionClick={handleMentionClick}
                 onUserUpdate={(u) => setUser(u)}
-                onNotify={(type, toId, entityId, preview) =>
-                  notificationsService.create(
-                    toId,
-                    type,
-                    user?.id,
-                    entityId,
-                    preview,
-                  )
-                }
+                onNotify={(type, toId, entityId, preview) => notificationsService.create(toId, type, user?.id, entityId, preview)}
                 lastSentGift={lastSentGift}
                 onGiftClick={(u) => setGiftTarget(u)}
               />
@@ -6284,96 +6167,39 @@ export default function App() {
           </section>
 
           {/* ── УВЕДОМЛЕНИЯ ── */}
-          <section
-            className={`view ${activeTab === "notifs" ? "is-active" : ""}`}
-          >
+          <section className={`view ${activeTab === "notifs" ? "is-active" : ""}`}>
             <div className="view-header">
               <div className="view-header__title">Уведомления</div>
             </div>
-            <div
-              className="view-content"
-              style={{ overflowY: "auto", padding: 20 }}
-            >
+            <div className="view-content" style={{ overflowY: "auto", padding: 20 }}>
               {dbNotifs.length === 0 ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: 40,
-                    color: "rgba(255,255,255,0.25)",
-                    fontSize: 14,
-                  }}
-                >
+                <div style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,0.25)", fontSize: 14 }}>
                   Уведомлений пока нет
                 </div>
               ) : (
                 dbNotifs.map((n) => (
-                  <div
-                    key={n.id}
-                    style={{
-                      display: "flex",
-                      gap: 12,
-                      padding: "12px 16px",
-                      background: n.read
-                        ? "rgba(255,255,255,0.02)"
-                        : "rgba(255,255,255,0.06)",
-                      borderRadius: 14,
-                      marginBottom: 8,
-                      border: `1px solid ${n.read ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.14)"}`,
-                      cursor: "pointer",
-                    }}
+                  <div key={n.id}
+                    style={{ display: "flex", gap: 12, padding: "12px 16px", background: n.read ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)", borderRadius: 14, marginBottom: 8, border: `1px solid ${n.read ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.14)"}`, cursor: "pointer" }}
                     onClick={async () => {
-                      if (n.type === 'message' && n.entity_id) {
-                        setActiveTab('chats');
-                        setActiveChatId(n.entity_id);
-                      } else if ((n.type === 'like' || n.type === 'comment' || n.type === 'mention') && n.entity_id) {
+                      if (n.type === 'message' && n.entity_id) { setActiveTab('chats'); setActiveChatId(n.entity_id); }
+                      else if ((n.type === 'like' || n.type === 'comment' || n.type === 'mention') && n.entity_id) {
                         const post = await postsService.getById(n.entity_id);
                         if (post) { setFocusPost(post); } else if (n.from_user) { openProfile(n.from_user); }
-                      } else if (n.type === 'follow' && n.from_user) {
-                        openProfile(n.from_user);
-                      }
-                    }}
-                  >
+                      } else if (n.type === 'follow' && n.from_user) { openProfile(n.from_user); }
+                    }}>
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <Avatar url={n.from_user?.avatar_url} name={n.from_user?.name} size={40} />
                       <div style={{ position: 'absolute', bottom: -2, right: -2, fontSize: 14, lineHeight: 1 }}>
-                        {n.type === 'like' && '❤️'}
-                        {n.type === 'comment' && '💬'}
-                        {n.type === 'follow' && '👤'}
-                        {n.type === 'message' && '💌'}
-                        {n.type === 'mention' && '@'}
+                        {n.type === 'like' && '❤️'}{n.type === 'comment' && '💬'}{n.type === 'follow' && '👤'}{n.type === 'message' && '💌'}{n.type === 'mention' && '@'}
                       </div>
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
                         <b>{n.from_user?.name}</b>
-                        {n.type === "like" && " оценил ваш пост"}
-                        {n.type === "comment" && " прокомментировал ваш пост"}
-                        {n.type === "follow" && " подписался на вас"}
-                        {n.type === "message" && " написал вам"}
-                        {n.type === "mention" && " упомянул вас"}
+                        {n.type === "like" && " оценил ваш пост"}{n.type === "comment" && " прокомментировал ваш пост"}{n.type === "follow" && " подписался на вас"}{n.type === "message" && " написал вам"}{n.type === "mention" && " упомянул вас"}
                       </div>
-                      {n.entity_preview && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.4)",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {n.entity_preview}
-                        </div>
-                      )}
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "rgba(255,255,255,0.3)",
-                          marginTop: 2,
-                        }}
-                      >
-                        {formatRelative(n.created_at)}
-                      </div>
+                      {n.entity_preview && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.entity_preview}</div>}
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{formatRelative(n.created_at)}</div>
                     </div>
                   </div>
                 ))
@@ -6382,22 +6208,16 @@ export default function App() {
           </section>
 
           {/* ── НАСТРОЙКИ ── */}
-          <section
-            className={`view ${activeTab === "settings" ? "is-active" : ""}`}
-          >
+          <section className={`view ${activeTab === "settings" ? "is-active" : ""}`}>
             <div className="view-header">
-              <div className="view-header__title">Пароль и безопасность</div>
+              <div className="view-header__title">Настройки</div>
             </div>
-            <div
-              className="view-content"
-              style={{ overflowY: "auto", padding: 20 }}
-            >
+            <div className="view-content" style={{ overflowY: "auto", padding: 20 }}>
               <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={doLogout}
                 bubbleThemeId={bubbleThemeId} onBubbleTheme={id => { applyBubbleTheme(id); setBubbleThemeId(id); }}
                 accentThemeId={accentThemeId} onAccentTheme={id => { applyAccentTheme(id); setAccentThemeId(id); }}
                 customMeColor={customMeColor} customThemColor={customThemColor}
-                onCustomBubble={(which, color) => { applyCustomBubbleColor(which, color); which === 'me' ? setCustomMeColor(color) : setCustomThemColor(color); }}
-              />
+                onCustomBubble={(which, color) => { applyCustomBubbleColor(which, color); which === 'me' ? setCustomMeColor(color) : setCustomThemColor(color); }}/>
               {user?.is_admin && (
                 <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>ПОДАРКИ</div>
@@ -6414,7 +6234,107 @@ export default function App() {
             </div>
           </section>
         </main>
+
+        {/* ════ BOTTOM NAV ════ */}
+        {user && !(activeTab === 'chats' && activeChatId) && (
+          <nav className="bottom-nav">
+            <button className={`bnav-btn ${activeTab === 'feed' ? 'is-active' : ''}`}
+              onClick={() => { setActiveTab('feed'); }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+                <polyline points="9,22 9,12 15,12 15,22" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+              </svg>
+              Лента
+            </button>
+            <button className={`bnav-btn ${activeTab === 'chats' ? 'is-active' : ''}`}
+              onClick={() => { setActiveTab('chats'); setActiveChatId(null); }}>
+              {totalUnread > 0 && <span className="bnav-badge">{totalUnread > 99 ? '99+' : totalUnread}</span>}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M7.5 18.5H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8.5a3 3 0 0 1-3 3h-5.2l-3.6 2.6a.9.9 0 0 1-1.4-.7v-1.9Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+              </svg>
+              Чаты
+            </button>
+            <button className={`bnav-btn ${activeTab === 'profile' ? 'is-active' : ''}`}
+              onClick={() => { setActiveTab('profile'); setViewingUser(null); setProfileSubView(null); }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.7"/>
+              </svg>
+              Профиль
+            </button>
+          </nav>
+        )}
       </div>
+
+      {/* ════ SETTINGS MODAL ════ */}
+      {settingsOpen && (
+        <div className="modal-overlay" onClick={() => setSettingsOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#111118', borderRadius: '20px 20px 0 0', maxHeight: '90dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 17 }}>Настройки</div>
+              <button onClick={() => setSettingsOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: 20 }}>
+              <SettingsPanel user={user} onUserUpdate={(u) => setUser(u)} onLogout={() => { setSettingsOpen(false); doLogout(); }}
+                bubbleThemeId={bubbleThemeId} onBubbleTheme={id => { applyBubbleTheme(id); setBubbleThemeId(id); }}
+                accentThemeId={accentThemeId} onAccentTheme={id => { applyAccentTheme(id); setAccentThemeId(id); }}
+                customMeColor={customMeColor} customThemColor={customThemColor}
+                onCustomBubble={(which, color) => { applyCustomBubbleColor(which, color); which === 'me' ? setCustomMeColor(color) : setCustomThemColor(color); }}/>
+              {user?.is_admin && (
+                <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>ПОДАРКИ</div>
+                  <button onClick={() => { setGiftManageOpen(true); setSettingsOpen(false); }}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '12px 16px', color: 'white', fontSize: 14, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M20 12v10H4V12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 7H2v5h20V7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 22V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>Управление подарками</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Загрузить картинки и настроить категории</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ NOTIFS MODAL ════ */}
+      {notifsOpen && (
+        <div onClick={() => setNotifsOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 500, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#111118', borderRadius: '20px 20px 0 0', maxHeight: '85dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 17 }}>Уведомления</div>
+              <button onClick={() => setNotifsOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {dbNotifs.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 14 }}>Уведомлений нет</div>
+              ) : dbNotifs.map(n => (
+                <div key={n.id} onClick={async () => {
+                  setNotifsOpen(false);
+                  if (n.type === 'message' && n.entity_id) { setActiveTab('chats'); setActiveChatId(n.entity_id); }
+                  else if ((n.type === 'like' || n.type === 'comment' || n.type === 'mention') && n.entity_id) { const post = await postsService.getById(n.entity_id); if (post) setFocusPost(post); else if (n.from_user) openProfile(n.from_user); }
+                  else if (n.type === 'follow' && n.from_user) openProfile(n.from_user);
+                }} style={{ padding: '14px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                  <Avatar url={n.from_user?.avatar_url} name={n.from_user?.name} size={40} />
+                  <div>
+                    <div style={{ fontSize: 14, color: 'white' }}>
+                      <span style={{ fontWeight: 700 }}>{n.from_user?.name}</span>{' '}
+                      {n.type === 'like' ? 'оценил(-а) пост' : n.type === 'comment' ? 'прокомментировал(-а)' : n.type === 'follow' ? 'подписался(-ась) на вас' : n.type === 'message' ? 'написал(-а) вам' : n.type === 'mention' ? 'упомянул(-а) вас' : ''}
+                    </div>
+                    {n.entity_preview && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{n.entity_preview}</div>}
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{formatRelative(n.created_at)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ════ AUTH MODAL ════ */}
       <div
